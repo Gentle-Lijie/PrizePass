@@ -1,6 +1,7 @@
 .DS_Store
 .env
 .env.*
+!.env.example
 work/
 __pycache__/
 *.py[cod]
@@ -8,3 +9,9 @@ __pycache__/
 venv/
 node_modules/
 dist/
+.data/
+logs/
+.pytest_cache/
+.playwright-cli/
+output/playwright/
+*.tsbuildinfo

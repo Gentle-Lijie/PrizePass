@@ -1,0 +1,1 @@
+"""PrizePass test package."""
