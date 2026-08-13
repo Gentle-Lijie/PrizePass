@@ -90,25 +90,79 @@ if [[ $# -gt 0 ]]; then
 fi
 
 pids=()
-cleanup() {
-  trap - INT TERM EXIT
-  if ((${#pids[@]})); then
-    kill "${pids[@]}" 2>/dev/null || true
-    wait "${pids[@]}" 2>/dev/null || true
-  fi
-}
-trap cleanup INT TERM EXIT
+process_names=()
+cleanup_started=false
 
-(cd "$ROOT_DIR/backend" && exec "$ROOT_DIR/.venv/bin/uvicorn" app.main:app --reload --host 127.0.0.1 --port "${APP_PORT:-8007}") & pids+=("$!")
-(cd "$ROOT_DIR/backend" && exec "$ROOT_DIR/.venv/bin/python" -m app.worker) & pids+=("$!")
-npm --prefix "$ROOT_DIR/frontend" run dev & pids+=("$!")
+cleanup() {
+  if [[ "$cleanup_started" == true ]]; then
+    return
+  fi
+  cleanup_started=true
+  trap - INT TERM EXIT
+  for pid in "${pids[@]}"; do
+    kill -TERM -- "-$pid" 2>/dev/null || true
+  done
+
+  local deadline=$((SECONDS + 5))
+  local groups_alive=true
+  while [[ "$groups_alive" == true && $SECONDS -lt $deadline ]]; do
+    groups_alive=false
+    for pid in "${pids[@]}"; do
+      if kill -0 -- "-$pid" 2>/dev/null; then
+        groups_alive=true
+        break
+      fi
+    done
+    if [[ "$groups_alive" == true ]]; then
+      sleep 0.1
+    fi
+  done
+
+  for pid in "${pids[@]}"; do
+    kill -KILL -- "-$pid" 2>/dev/null || true
+  done
+  for pid in "${pids[@]}"; do
+    wait "$pid" 2>/dev/null || true
+  done
+}
+
+handle_signal() {
+  local exit_code="$1"
+  cleanup
+  exit "$exit_code"
+}
+
+trap 'handle_signal 130' INT
+trap 'handle_signal 143' TERM
+trap cleanup EXIT
+
+# Job control gives every background service its own process group. Killing the
+# group also reaches uvicorn's reload child and npm/Vite descendants.
+set -m
+(cd "$ROOT_DIR/backend" && exec "$ROOT_DIR/.venv/bin/uvicorn" app.main:app --reload --host 127.0.0.1 --port "${APP_PORT:-8007}") &
+pids+=("$!")
+process_names+=("API")
+(cd "$ROOT_DIR/backend" && exec "$ROOT_DIR/.venv/bin/python" -m app.worker) &
+pids+=("$!")
+process_names+=("worker")
+npm --prefix "$ROOT_DIR/frontend" run dev &
+pids+=("$!")
+process_names+=("frontend")
 
 while true; do
-  for pid in "${pids[@]}"; do
+  for index in "${!pids[@]}"; do
+    pid="${pids[$index]}"
     if ! kill -0 "$pid" 2>/dev/null; then
-      wait "$pid" || status=$?
-      echo "核心进程已退出。" >&2
-      exit "${status:-1}"
+      if wait "$pid"; then
+        status=0
+      else
+        status=$?
+      fi
+      echo "核心进程已退出：${process_names[$index]}（状态码 $status）。" >&2
+      if ((status == 0)); then
+        exit 1
+      fi
+      exit "$status"
     fi
   done
   sleep 1

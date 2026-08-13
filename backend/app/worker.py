@@ -23,6 +23,18 @@ SUBJECTS = {
     "redemption_picked_up": "[PrizePass] 兑换已领取",
     "redemption_cancelled": "[PrizePass] 兑换已取消",
 }
+EMAIL_POSTER_PRESETS = {
+    "none": {},
+    "smtogo": {"from": "from", "to": "to", "subject": "subject", "bodyHtml": "html"},
+    "generic": {
+        "from": "from",
+        "to": "to",
+        "subject": "subject",
+        "bodyHtml": "html",
+        "bodyText": "text",
+    },
+    "custom_example": {"to": "email", "subject": "subject", "body": "content"},
+}
 
 
 def send_email(job: NotificationJob) -> None:
@@ -38,6 +50,8 @@ def send_email(job: NotificationJob) -> None:
     )
     message["To"] = job.destination
     message.set_content(job.text_rendered)
+    if job.html_rendered:
+        message.add_alternative(job.html_rendered, subtype="html")
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
         if settings.smtp_use_tls:
             smtp.starttls()
@@ -54,8 +68,54 @@ def send_webhook(job: NotificationJob) -> None:
         json={
             "event_type": job.event_type,
             "text": job.text_rendered,
+            "html": job.html_rendered,
             "occurred_at": utc_iso(job.created_at),
         },
+        timeout=20,
+    )
+    response.raise_for_status()
+
+
+def build_email_poster_payload(job: NotificationJob) -> dict[str, object]:
+    """Build the same logical payload as email-poster's field-map presets."""
+    settings = get_settings()
+    if settings.email_poster_preset not in EMAIL_POSTER_PRESETS:
+        raise RuntimeError(f"不支持的 EMAIL_POSTER_PRESET: {settings.email_poster_preset}")
+    fields = {
+        **EMAIL_POSTER_PRESETS[settings.email_poster_preset],
+        **settings.email_poster_fields,
+    }
+    payload: dict[str, object] = dict(settings.email_poster_extra)
+    if fields.get("from") and settings.email_poster_from_address:
+        payload[fields["from"]] = settings.email_poster_from_address
+    if not fields.get("to") or not fields.get("subject"):
+        raise RuntimeError("email-poster 字段映射必须包含 to 和 subject")
+    payload[fields["to"]] = job.destination
+    payload[fields["subject"]] = SUBJECTS[job.event_type]
+
+    body_type = "html" if job.html_rendered else "text"
+    body = job.html_rendered or job.text_rendered
+    if fields.get("body"):
+        payload[fields["body"]] = body
+    else:
+        body_field = fields.get("bodyHtml" if body_type == "html" else "bodyText")
+        if not body_field:
+            raise RuntimeError(f"email-poster 字段映射缺少 {body_type} 正文字段")
+        payload[body_field] = body
+    if fields.get("type"):
+        payload[fields["type"]] = body_type
+    return payload
+
+
+def send_email_poster(job: NotificationJob) -> None:
+    settings = get_settings()
+    if not settings.email_poster_post_url:
+        raise RuntimeError("EMAIL_POSTER_POST_URL 未配置")
+    headers = {**settings.email_poster_headers, "Content-Type": "application/json"}
+    response = httpx.post(
+        settings.email_poster_post_url,
+        json=build_email_poster_payload(job),
+        headers=headers,
         timeout=20,
     )
     response.raise_for_status()
@@ -109,8 +169,10 @@ def process_job(job_id: int) -> None:
         try:
             if job.channel is NotificationChannel.EMAIL:
                 send_email(job)
-            else:
+            elif job.channel is NotificationChannel.WEBHOOK:
                 send_webhook(job)
+            else:
+                send_email_poster(job)
         except Exception as exc:
             job.attempt_count += 1
             job.last_error = f"{type(exc).__name__}: {str(exc)[:500]}"

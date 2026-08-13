@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     notification_email: str = ""
     webhook_url: str = ""
 
+    # email-poster compatible HTTP relay.  Complex values are JSON objects in env vars.
+    email_poster_post_url: str = ""
+    email_poster_preset: str = "generic"
+    email_poster_from_address: str = ""
+    email_poster_headers: dict[str, str] = Field(default_factory=dict)
+    email_poster_fields: dict[str, str] = Field(default_factory=dict)
+    email_poster_extra: dict[str, object] = Field(default_factory=dict)
+
     worker_poll_seconds: float = Field(default=2.0, gt=0)
 
 

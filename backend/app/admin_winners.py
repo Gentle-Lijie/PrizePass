@@ -20,9 +20,10 @@ from .models import (
 )
 from .notifications import (
     code_issued_context,
-    create_notification_pair,
+    create_notification_jobs,
+    render_html_template,
     render_template,
-    template_text,
+    template_content,
 )
 from .spreadsheets import (
     MAX_FILE_SIZE,
@@ -176,7 +177,7 @@ async def confirm_winners(event_id: int, db: DbSession, file: Annotated[UploadFi
     if not result["valid"]:
         fail(422, "invalid_import", "表格存在错误，未导入任何获奖人", {"errors": result["errors"]})
     codes = generate_codes(db, len(result["rows"]))
-    template = template_text(db, "code_issued")
+    text_template, html_template = template_content(db, "code_issued")
     for row, code_value in zip(result["rows"], codes, strict=True):
         identity_key = f"external:{row['external_id']}" if row["external_id"] else f"email:{row['email']}"
         winner = Winner(event_id=event_id, identity_key=identity_key, **row)
@@ -190,12 +191,15 @@ async def confirm_winners(event_id: int, db: DbSession, file: Annotated[UploadFi
             status=CodeStatus.ISSUED,
         )
         db.add(code)
-        text_rendered = render_template(template, code_issued_context(winner, code_value, event))
-        create_notification_pair(
+        context = code_issued_context(winner, code_value, event)
+        text_rendered = render_template(text_template, context)
+        html_rendered = render_html_template(html_template, context)
+        create_notification_jobs(
             db,
             event_type="code_issued",
             text_rendered=text_rendered,
-            email_destination=winner.email,
+            winner_email=winner.email,
+            html_rendered=html_rendered,
             winner_id=winner.id,
         )
     db.commit()

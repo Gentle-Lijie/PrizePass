@@ -8,7 +8,7 @@
 - FastAPI + SQLAlchemy 2 + Alembic，API 端口 `8007`
 - MySQL 8 / InnoDB / utf8mb4
 - MySQL 通知任务表 + 单独 Python worker
-- SMTP 纯文本 Email 与固定 Webhook
+- SMTP 多段 Email、email-poster 兼容 HTTP 转发与固定 Webhook
 
 没有管理员用户表、Cookie、Token、JWT、RBAC、余额、多自提点、配送、复杂库存或 mock 后端。
 
@@ -50,6 +50,27 @@ cp .env.example .env
 - `APP_PORT=8007`
 - `UPLOAD_DIR`：必须持久化并与 MySQL 同时间点备份。
 - `SMTP_*`、`NOTIFICATION_EMAIL`、`WEBHOOK_URL`：通知目标和适配器配置。
+- `EMAIL_POSTER_POST_URL`：email-poster 下游邮件网关地址；配置后，每条邮件通知会额外创建一个 `email_poster` 任务。
+- `EMAIL_POSTER_PRESET`：`generic`（默认）、`smtogo`、`custom_example` 或 `none`。
+- `EMAIL_POSTER_FROM_ADDRESS`：转发邮件的默认发件地址。
+- `EMAIL_POSTER_HEADERS`、`EMAIL_POSTER_FIELDS`、`EMAIL_POSTER_EXTRA`：JSON 对象，语义分别对应 email-poster 的 `headers`、`fields`、`extra`。
+
+例如 generic/Resend 风格网关：
+
+```dotenv
+EMAIL_POSTER_POST_URL=https://mail-gateway.example.com/send
+EMAIL_POSTER_PRESET=generic
+EMAIL_POSTER_FROM_ADDRESS=noreply@example.com
+EMAIL_POSTER_HEADERS={"Authorization":"Bearer replace-me"}
+```
+
+管理后台为每个事件同时维护纯文本与可选 HTML 模板。SMTP 会发送 `multipart/alternative`（纯文本 + HTML）；email-poster 优先发送 HTML，HTML 关闭时使用纯文本字段；普通 Webhook 的 JSON 同时包含 `text` 与 `html`。HTML 变量会做实体转义，模板自身仍由管理员控制。
+
+“场景通知路由”可为每个通知场景独立选择：SMTP → 获奖人、SMTP → 运营邮箱、email-poster → 获奖人、email-poster → 运营邮箱以及 Webhook。一个场景可同时选择多条路由，也可全部关闭；修改只影响之后创建的通知任务。默认路由如下：
+
+- 兑换码发放、奖品待领取、兑换取消：邮件发给获奖人。
+- 兑换已提交、兑换已领取：邮件发给 `NOTIFICATION_EMAIL`。
+- 所有场景默认启用 Webhook；配置 email-poster 后，它与 SMTP 使用相同的默认收件对象。
 
 密码只保存在管理员页面内存；兑换码只保存在兑换页面内存。刷新后均需重新输入。
 
@@ -74,7 +95,7 @@ npm run build
 1. 打开 `/admin`，输入 `ADMIN_PASSWORD`。
 2. 创建比赛，设置单一自提地点、说明和截止时间。
 3. 新增或导入奖品；本地图片先上传，再保存返回的 `/uploads/prizes/...` URL。
-4. 在“获奖人”页下载模板，校验并确认导入。系统生成兑换码及 Email/Webhook 任务。
+4. 在“获奖人”页下载模板，校验并确认导入。系统生成兑换码及 SMTP/Webhook 任务；配置 email-poster 后也会生成对应转发任务。
 5. worker 发送任务；失败任务按 1 分钟、5 分钟重试，第三次失败后可在通知设置中手工重试。
 6. 获奖人打开 `/redeem`，输入码、选择多种奖品、填写领取人信息并一次提交。
 7. 管理员将兑换依次处理为待领取、已领取，或在领取前取消并恢复库存与兑换码。

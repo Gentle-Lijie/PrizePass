@@ -13,12 +13,14 @@ main_url = str(env_values["DATABASE_URL"])
 parsed_url = make_url(main_url)
 test_url = parsed_url.set(database=f"{parsed_url.database}_test").render_as_string(hide_password=False)
 os.environ["DATABASE_URL"] = test_url
-os.environ["ADMIN_PASSWORD"] = str(env_values["ADMIN_PASSWORD"])
+os.environ["ADMIN_PASSWORD"] = "prizepass-dev-admin"
 os.environ["UPLOAD_DIR"] = str(env_values["UPLOAD_DIR"])
+os.environ["EMAIL_POSTER_POST_URL"] = ""
 
 from app.models import (  # noqa: E402
     Event,
     NotificationJob,
+    NotificationRoutingRule,
     NotificationTemplate,
     Prize,
     Redemption,
@@ -26,7 +28,11 @@ from app.models import (  # noqa: E402
     RedemptionItem,
     Winner,
 )
-from app.notifications import DEFAULT_TEMPLATES  # noqa: E402
+from app.notifications import (  # noqa: E402
+    DEFAULT_HTML_TEMPLATES,
+    DEFAULT_TEMPLATES,
+    default_routing_rules,
+)
 
 
 test_engine = create_engine(test_url)
@@ -46,12 +52,24 @@ def clean_database():
             Event,
         ):
             session.execute(delete(model))
+        session.execute(delete(NotificationRoutingRule))
+        session.add_all(
+            NotificationRoutingRule(event_type=event_type, channel=channel, recipient=recipient)
+            for event_type, channel, recipient in default_routing_rules()
+        )
         for event_type, text_template in DEFAULT_TEMPLATES.items():
             template = session.scalar(
                 select(NotificationTemplate).where(NotificationTemplate.event_type == event_type)
             )
             if template is None:
-                session.add(NotificationTemplate(event_type=event_type, text_template=text_template))
+                session.add(
+                    NotificationTemplate(
+                        event_type=event_type,
+                        text_template=text_template,
+                        html_template=DEFAULT_HTML_TEMPLATES[event_type],
+                    )
+                )
             else:
                 template.text_template = text_template
+                template.html_template = DEFAULT_HTML_TEMPLATES[event_type]
         session.commit()

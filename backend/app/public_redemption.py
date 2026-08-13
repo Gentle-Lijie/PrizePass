@@ -22,7 +22,7 @@ from .models import (
     RedemptionStatus,
     Winner,
 )
-from .notifications import create_notification_pair, render_template, template_text, utc_now
+from .notifications import create_notification_jobs, render_notification, utc_now
 from .schemas import StrictModel
 from .timeutils import utc_iso
 
@@ -266,12 +266,13 @@ def submit_redemption(
             "pickup_location": event.pickup_location,
             "pickup_instructions": event.pickup_instructions,
         }
-        rendered = render_template(template_text(db, "redemption_submitted"), context)
-        create_notification_pair(
+        rendered, html_rendered = render_notification(db, "redemption_submitted", context)
+        create_notification_jobs(
             db,
             event_type="redemption_submitted",
             text_rendered=rendered,
-            email_destination=get_settings().notification_email,
+            winner_email=winner.email,
+            html_rendered=html_rendered,
             winner_id=winner.id,
             redemption_id=redemption.id,
         )

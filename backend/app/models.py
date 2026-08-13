@@ -42,6 +42,13 @@ class RedemptionStatus(StrEnum):
 class NotificationChannel(StrEnum):
     EMAIL = "email"
     WEBHOOK = "webhook"
+    EMAIL_POSTER = "email_poster"
+
+
+class NotificationRecipient(StrEnum):
+    WINNER = "winner"
+    OPERATIONS = "operations"
+    WEBHOOK = "webhook"
 
 
 class NotificationStatus(StrEnum):
@@ -168,6 +175,26 @@ class NotificationTemplate(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     event_type: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
     text_template: Mapped[str] = mapped_column(Text, nullable=False)
+    html_template: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class NotificationRoutingRule(Base):
+    __tablename__ = "notification_routing_rules"
+    __table_args__ = (
+        UniqueConstraint(
+            "event_type", "channel", "recipient", name="uq_notification_routing_rule"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    channel: Mapped[NotificationChannel] = mapped_column(
+        enum_type(NotificationChannel, "notification_routing_channel"), nullable=False
+    )
+    recipient: Mapped[NotificationRecipient] = mapped_column(
+        enum_type(NotificationRecipient, "notification_recipient"), nullable=False
+    )
     updated_at: Mapped[datetime] = updated_at()
 
 
@@ -184,6 +211,7 @@ class NotificationJob(Base):
     redemption_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("redemptions.id"))
     destination: Mapped[str] = mapped_column(Text, nullable=False)
     text_rendered: Mapped[str] = mapped_column(Text, nullable=False)
+    html_rendered: Mapped[str | None] = mapped_column(Text)
     status: Mapped[NotificationStatus] = mapped_column(
         enum_type(NotificationStatus, "notification_status"), nullable=False
     )

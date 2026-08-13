@@ -19,7 +19,7 @@ from .models import (
     RedemptionStatus,
     Winner,
 )
-from .notifications import create_notification_pair, render_template, template_text, utc_now
+from .notifications import create_notification_jobs, render_notification, utc_now
 from .spreadsheets import export_csv, export_xlsx
 from .timeutils import utc_iso
 
@@ -178,7 +178,14 @@ def get_redemption(redemption_id: int, db: DbSession) -> dict:
     return serialize_redemption(redemption, winner, items, detail=True)
 
 
-def transition(db: Session, redemption_id: int, *, expected: RedemptionStatus, target: RedemptionStatus, event_type: str, email_to_winner: bool) -> dict:
+def transition(
+    db: Session,
+    redemption_id: int,
+    *,
+    expected: RedemptionStatus,
+    target: RedemptionStatus,
+    event_type: str,
+) -> dict:
     try:
         redemption = redemption_or_404(db, redemption_id, lock=True)
         if redemption.status is not expected:
@@ -187,12 +194,15 @@ def transition(db: Session, redemption_id: int, *, expected: RedemptionStatus, t
         redemption.status = target
         if target is RedemptionStatus.PICKED_UP:
             redemption.picked_up_at = utc_now()
-        rendered = render_template(template_text(db, event_type), status_context(redemption, code, winner, event, items))
-        create_notification_pair(
+        rendered, html_rendered = render_notification(
+            db, event_type, status_context(redemption, code, winner, event, items)
+        )
+        create_notification_jobs(
             db,
             event_type=event_type,
             text_rendered=rendered,
-            email_destination=winner.email if email_to_winner else get_settings().notification_email,
+            winner_email=winner.email,
+            html_rendered=html_rendered,
             winner_id=winner.id,
             redemption_id=redemption.id,
         )
@@ -211,7 +221,6 @@ def mark_ready(redemption_id: int, db: DbSession) -> dict:
         expected=RedemptionStatus.SUBMITTED,
         target=RedemptionStatus.READY,
         event_type="redemption_ready",
-        email_to_winner=True,
     )
 
 
@@ -223,7 +232,6 @@ def mark_picked_up(redemption_id: int, db: DbSession) -> dict:
         expected=RedemptionStatus.READY,
         target=RedemptionStatus.PICKED_UP,
         event_type="redemption_picked_up",
-        email_to_winner=False,
     )
 
 
@@ -264,15 +272,17 @@ def cancel_redemption(redemption_id: int, db: DbSession) -> dict:
         code.redeemed_at = None
         redemption.status = RedemptionStatus.CANCELLED
         redemption.cancelled_at = utc_now()
-        rendered = render_template(
-            template_text(db, "redemption_cancelled"),
+        rendered, html_rendered = render_notification(
+            db,
+            "redemption_cancelled",
             status_context(redemption, code, winner, event, items),
         )
-        create_notification_pair(
+        create_notification_jobs(
             db,
             event_type="redemption_cancelled",
             text_rendered=rendered,
-            email_destination=winner.email,
+            winner_email=winner.email,
+            html_rendered=html_rendered,
             winner_id=winner.id,
             redemption_id=redemption.id,
         )

@@ -147,16 +147,27 @@ export interface AdminRedemption {
 export interface NotificationTemplateRecord {
   event_type: string
   text_template: string
+  html_template: string | null
   allowed_variables: string[]
   updated_at: string
+}
+
+export interface NotificationRoutingRecord {
+  event_type: string
+  smtp_winner: boolean
+  smtp_operations: boolean
+  email_poster_winner: boolean
+  email_poster_operations: boolean
+  webhook: boolean
 }
 
 export interface NotificationJobRecord {
   id: number
   event_type: string
-  channel: 'email' | 'webhook'
+  channel: 'email' | 'webhook' | 'email_poster'
   destination: string
   text_rendered: string
+  html_rendered: string | null
   status: 'pending' | 'sending' | 'retrying' | 'sent' | 'failed'
   attempt_count: number
   next_attempt_at: string | null
