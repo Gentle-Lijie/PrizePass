@@ -8,6 +8,7 @@ export interface EventRecord {
   redemption_deadline: string
   pickup_location: string
   pickup_instructions: string
+  budget: number
   winner_count: number
   redemption_count: number
   created_at: string
@@ -21,6 +22,7 @@ export interface EventWrite {
   redemption_deadline: string
   pickup_location: string
   pickup_instructions: string
+  budget: number
 }
 
 export interface PrizeRecord {
@@ -28,7 +30,9 @@ export interface PrizeRecord {
   event_id: number
   name: string
   image: string
+  jd_url: string | null
   real_value: number
+  purchase_value: number
   redeem_value: number
   stock: number
   description: string | null
@@ -39,7 +43,9 @@ export interface PrizeRecord {
 export interface PrizeWrite {
   name: string
   image: string
+  jd_url: string | null
   real_value: number
+  purchase_value: number
   redeem_value: number
   stock: number
   description: string | null
@@ -71,6 +77,14 @@ export interface WinnerRecord {
   created_at: string
 }
 
+export type NotificationChannel = 'email' | 'webhook' | 'email_poster'
+
+export interface PrizeSummary {
+  total_purchase_value: number
+  claimed_purchase_value: number
+  budget: number
+}
+
 export interface WinnerImportPreview {
   valid: boolean
   rows: Array<Record<string, string | number | null>>
@@ -96,6 +110,7 @@ export interface PublicPrize {
   id: number
   name: string
   image: string
+  jd_url: string | null
   real_value: number
   redeem_value: number
   stock: number
@@ -138,6 +153,7 @@ export interface AdminRedemption {
     prize_name: string
     prize_image: string
     real_value: number
+    purchase_value: number
     redeem_value: number
     quantity: number
     line_redeem_value: number

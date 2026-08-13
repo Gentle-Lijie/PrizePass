@@ -74,6 +74,8 @@ def test_prize_rejects_extra_fields_and_non_https_image() -> None:
     assert client.post(f"/api/admin/events/{event_id}/prizes", headers=ADMIN, json=bad).status_code == 422
     bad = {**prize_payload(), "image": "http://example.com/cup.jpg"}
     assert client.post(f"/api/admin/events/{event_id}/prizes", headers=ADMIN, json=bad).status_code == 422
+    bad = {**prize_payload(), "jd_url": "http://item.jd.com/100.html"}
+    assert client.post(f"/api/admin/events/{event_id}/prizes", headers=ADMIN, json=bad).status_code == 422
 
 
 def test_image_upload_checks_file_content() -> None:

@@ -28,12 +28,23 @@ def validate_image(value: str) -> str:
     raise ValueError("图片必须是 HTTPS URL 或已有的站内奖品图片路径")
 
 
+def validate_https_url(value: str | None) -> str | None:
+    value = value.strip() if value is not None else ""
+    if not value:
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme == "https" and parsed.netloc:
+        return value
+    raise ValueError("京东链接必须是 HTTPS URL")
+
+
 class EventWrite(StrictModel):
     name: Annotated[str, Field(min_length=1, max_length=200)]
     description: str | None = None
     redemption_deadline: datetime
     pickup_location: Annotated[str, Field(min_length=1)]
     pickup_instructions: Annotated[str, Field(min_length=1)]
+    budget: Annotated[int, Field(ge=0, le=4_294_967_295)] = 0
     status: EventStatus = EventStatus.DRAFT
 
     @field_validator("name", "pickup_location", "pickup_instructions")
@@ -65,6 +76,7 @@ class EventRead(BaseModel):
     redemption_deadline: datetime
     pickup_location: str
     pickup_instructions: str
+    budget: int
     winner_count: int = 0
     redemption_count: int = 0
     created_at: datetime
@@ -78,7 +90,9 @@ class EventRead(BaseModel):
 class PrizeWrite(StrictModel):
     name: Annotated[str, Field(min_length=1, max_length=200)]
     image: str
+    jd_url: Annotated[str | None, Field(max_length=2000)] = None
     real_value: Annotated[int, Field(ge=0, le=4_294_967_295)]
+    purchase_value: Annotated[int, Field(ge=0, le=4_294_967_295)] = 0
     redeem_value: Annotated[int, Field(gt=0, le=4_294_967_295)]
     stock: Annotated[int, Field(ge=0, le=4_294_967_295)]
     description: Annotated[str | None, Field(max_length=5000)] = None
@@ -96,6 +110,11 @@ class PrizeWrite(StrictModel):
     def valid_image(cls, value: str) -> str:
         return validate_image(value)
 
+    @field_validator("jd_url")
+    @classmethod
+    def valid_jd_url(cls, value: str | None) -> str | None:
+        return validate_https_url(value)
+
     @field_validator("description")
     @classmethod
     def normalize_description(cls, value: str | None) -> str | None:
@@ -109,7 +128,9 @@ class PrizeRead(BaseModel):
     event_id: int
     name: str
     image: str
+    jd_url: str | None
     real_value: int
+    purchase_value: int
     redeem_value: int
     stock: int
     description: str | None

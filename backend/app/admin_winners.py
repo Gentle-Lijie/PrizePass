@@ -3,11 +3,13 @@ from typing import Annotated, Any
 
 from email_validator import EmailNotValidError, validate_email
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
+from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .admin_events import get_event_or_404
 from .auth import require_admin_password
+from .config import get_settings
 from .database import get_db
 from .http import fail
 from .models import (
@@ -25,6 +27,7 @@ from .notifications import (
     render_template,
     template_content,
 )
+from .schemas import StrictModel
 from .spreadsheets import (
     MAX_FILE_SIZE,
     export_csv,
@@ -56,6 +59,14 @@ WINNER_EXPORT_HEADERS = [
     "created_at",
 ]
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+class ResendNotificationRequest(StrictModel):
+    channels: Annotated[list[NotificationChannel], Field(min_length=1, max_length=3)]
+
+
+class QuotaUpdateRequest(StrictModel):
+    quota: Annotated[int, Field(gt=0, le=4_294_967_295)]
 
 
 def normalize_email(value: Any) -> str:
@@ -237,6 +248,95 @@ def winner_rows(db: Session, event_id: int) -> list[dict]:
         }
         for winner, code in rows
     ]
+
+
+def winner_and_code_or_404(
+    db: Session, winner_id: int, *, lock: bool = False
+) -> tuple[Winner, RedemptionCode]:
+    statement = (
+        select(Winner, RedemptionCode)
+        .join(RedemptionCode, RedemptionCode.winner_id == Winner.id)
+        .where(Winner.id == winner_id)
+    )
+    if lock:
+        statement = statement.with_for_update()
+    row = db.execute(statement).one_or_none()
+    if row is None:
+        fail(404, "winner_not_found", "获奖人不存在")
+    return row
+
+
+@router.post("/winners/{winner_id}/notifications/resend", status_code=201)
+def resend_winner_notification(
+    winner_id: int, payload: ResendNotificationRequest, db: DbSession
+) -> dict:
+    winner, code = winner_and_code_or_404(db, winner_id)
+    if code.status is not CodeStatus.ISSUED:
+        fail(409, "code_not_notifiable", "只有未兑换且有效的兑换码可以重新通知")
+    event = get_event_or_404(db, winner.event_id)
+    channels = list(dict.fromkeys(payload.channels))
+    if len(channels) != len(payload.channels):
+        fail(422, "duplicate_notification_channel", "通知渠道不能重复选择")
+    settings = get_settings()
+    available = {
+        NotificationChannel.EMAIL: bool(settings.smtp_host and settings.smtp_from_email),
+        NotificationChannel.WEBHOOK: bool(settings.webhook_url),
+        NotificationChannel.EMAIL_POSTER: bool(settings.email_poster_post_url),
+    }
+    unavailable = [channel.value for channel in channels if not available[channel]]
+    if unavailable:
+        fail(
+            409,
+            "notification_channel_unavailable",
+            "所选通知渠道尚未配置",
+            {"channels": unavailable},
+        )
+    text_template, html_template = template_content(db, "code_issued")
+    context = code_issued_context(winner, code.code, event)
+    text_rendered = render_template(text_template, context)
+    html_rendered = render_html_template(html_template, context)
+    jobs = [
+        NotificationJob(
+            event_type="code_issued",
+            channel=channel,
+            winner_id=winner.id,
+            destination=settings.webhook_url
+            if channel is NotificationChannel.WEBHOOK
+            else winner.email,
+            text_rendered=text_rendered,
+            html_rendered=html_rendered,
+            status=NotificationStatus.PENDING,
+        )
+        for channel in channels
+    ]
+    db.add_all(jobs)
+    db.commit()
+    return {"queued": len(jobs), "channels": [channel.value for channel in channels]}
+
+
+@router.put("/winners/{winner_id}/quota")
+def update_winner_quota(
+    winner_id: int, payload: QuotaUpdateRequest, db: DbSession
+) -> dict:
+    winner, code = winner_and_code_or_404(db, winner_id, lock=True)
+    if code.status is not CodeStatus.ISSUED:
+        fail(409, "code_not_adjustable", "只有未兑换且有效的兑换码可以调整额度")
+    winner.quota = payload.quota
+    code.quota = payload.quota
+    db.commit()
+    return {"quota": payload.quota}
+
+
+@router.post("/winners/{winner_id}/code/revoke")
+def revoke_winner_code(winner_id: int, db: DbSession) -> dict:
+    _, code = winner_and_code_or_404(db, winner_id, lock=True)
+    if code.status is CodeStatus.REDEEMED:
+        fail(409, "code_already_redeemed", "已兑换的兑换码不能撤销")
+    if code.status is CodeStatus.DISABLED:
+        fail(409, "code_already_revoked", "兑换码已撤销")
+    code.status = CodeStatus.DISABLED
+    db.commit()
+    return {"code_status": code.status.value}
 
 
 @router.get("/events/{event_id}/winners")

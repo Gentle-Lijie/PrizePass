@@ -12,7 +12,7 @@ from .auth import require_admin_password
 from .config import get_settings
 from .database import get_db
 from .http import fail
-from .models import Event, EventStatus, Prize, Redemption, RedemptionItem, Winner
+from .models import Event, EventStatus, Prize, Redemption, RedemptionItem, RedemptionStatus, Winner
 from .schemas import EventRead, EventWrite, PrizeRead, PrizeWrite
 from .spreadsheets import (
     MAX_FILE_SIZE,
@@ -116,6 +116,45 @@ def list_prizes(event_id: int, db: DbSession) -> list[Prize]:
     return list(db.scalars(select(Prize).where(Prize.event_id == event_id).order_by(Prize.id)).all())
 
 
+@router.get("/events/{event_id}/prizes/summary")
+def prize_summary(event_id: int, db: DbSession) -> dict[str, int]:
+    event = get_event_or_404(db, event_id)
+    available_value = db.scalar(
+        select(func.coalesce(func.sum(Prize.purchase_value * Prize.stock), 0)).where(
+            Prize.event_id == event_id
+        )
+    ) or 0
+    allocated_value = db.scalar(
+        select(
+            func.coalesce(
+                func.sum(RedemptionItem.purchase_value_snapshot * RedemptionItem.quantity), 0
+            )
+        )
+        .join(Redemption, Redemption.id == RedemptionItem.redemption_id)
+        .where(
+            Redemption.event_id == event_id,
+            Redemption.status != RedemptionStatus.CANCELLED,
+        )
+    ) or 0
+    claimed_value = db.scalar(
+        select(
+            func.coalesce(
+                func.sum(RedemptionItem.purchase_value_snapshot * RedemptionItem.quantity), 0
+            )
+        )
+        .join(Redemption, Redemption.id == RedemptionItem.redemption_id)
+        .where(
+            Redemption.event_id == event_id,
+            Redemption.status == RedemptionStatus.PICKED_UP,
+        )
+    ) or 0
+    return {
+        "total_purchase_value": int(available_value + allocated_value),
+        "claimed_purchase_value": int(claimed_value),
+        "budget": event.budget,
+    }
+
+
 @router.post("/events/{event_id}/prizes", response_model=PrizeRead, status_code=201)
 def create_prize(event_id: int, payload: PrizeWrite, db: DbSession) -> Prize:
     get_event_or_404(db, event_id)
@@ -208,7 +247,9 @@ def validate_prize_table(filename: str, content: bytes) -> dict:
         return {"valid": False, "rows": [], "errors": [{"row": 0, "field": "file", "message": str(exc)}]}
     errors: list[dict] = []
     normalized: list[dict] = []
-    if table.headers != PRIZE_HEADERS:
+    legacy_headers = ["name", "image", "real_value", "redeem_value", "stock", "description"]
+    purchase_headers = ["name", "image", "real_value", "purchase_value", "redeem_value", "stock", "description"]
+    if table.headers not in (PRIZE_HEADERS, purchase_headers, legacy_headers):
         return {
             "valid": False,
             "rows": [],
@@ -217,19 +258,23 @@ def validate_prize_table(filename: str, content: bytes) -> dict:
     for index, raw in enumerate(table.rows, start=2):
         if len(raw) > len(PRIZE_HEADERS):
             errors.append({"row": index, "field": "row", "message": "该行包含多余列"})
-        values = list(raw) + [None] * (len(PRIZE_HEADERS) - len(raw))
+        values = list(raw) + [None] * (len(table.headers) - len(raw))
+        source = dict(zip(table.headers, values[: len(table.headers)], strict=True))
         row: dict = {}
         field_parsers = {
             "name": lambda value: str(value).strip() if value is not None else "",
             "image": lambda value: str(value).strip() if value is not None else "",
+            "jd_url": lambda value: str(value).strip() if value is not None else "",
             "real_value": parse_money_to_cents,
+            "purchase_value": lambda value: parse_money_to_cents(value, "采购单价"),
             "redeem_value": lambda value: parse_positive_integer(value, "抵扣价值"),
             "stock": lambda value: parse_nonnegative_integer(value, "库存"),
             "description": lambda value: str(value).strip() if value is not None else "",
         }
         for column, parser in field_parsers.items():
             try:
-                row[column] = parser(values[PRIZE_HEADERS.index(column)])
+                default = "0" if column == "purchase_value" else None
+                row[column] = parser(source.get(column, default))
             except ValueError as exc:
                 errors.append({"row": index, "field": column, "message": str(exc)})
         if not row.get("name"):
@@ -244,6 +289,7 @@ def validate_prize_table(filename: str, content: bytes) -> dict:
                 if not any(error["row"] == index and error["field"] == field for error in errors):
                     errors.append({"row": index, "field": field, "message": issue["msg"]})
         row["real_value"] = f"{row.get('real_value', 0) / 100:.2f}"
+        row["purchase_value"] = f"{row.get('purchase_value', 0) / 100:.2f}"
         normalized.append(row)
     return {"valid": not errors, "rows": normalized, "errors": errors, "count": len(normalized)}
 
@@ -270,7 +316,12 @@ async def confirm_prize_import(event_id: int, db: DbSession, file: Annotated[Upl
     prizes = []
     for row in result["rows"]:
         payload = PrizeWrite(
-            **{**row, "real_value": parse_money_to_cents(row["real_value"]), "description": row["description"] or None}
+            **{
+                **row,
+                "real_value": parse_money_to_cents(row["real_value"]),
+                "purchase_value": parse_money_to_cents(row["purchase_value"], "采购单价"),
+                "description": row["description"] or None,
+            }
         )
         prize = Prize(event_id=event_id, **payload.model_dump())
         db.add(prize)
@@ -284,7 +335,16 @@ def export_prizes(event_id: int, db: DbSession, format: str = Query(pattern="^(c
     prizes = list(db.scalars(select(Prize).where(Prize.event_id == event_id).order_by(Prize.id)).all())
     get_event_or_404(db, event_id)
     rows = [
-        [prize.name, prize.image, f"{prize.real_value / 100:.2f}", prize.redeem_value, prize.stock, prize.description or ""]
+        [
+            prize.name,
+            prize.image,
+            f"{prize.real_value / 100:.2f}",
+            f"{prize.purchase_value / 100:.2f}",
+            prize.redeem_value,
+            prize.stock,
+            prize.description or "",
+            prize.jd_url or "",
+        ]
         for prize in prizes
     ]
     if format == "csv":

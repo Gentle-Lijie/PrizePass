@@ -20,7 +20,9 @@ const form = reactive<EventWrite>({
   redemption_deadline: '',
   pickup_location: '',
   pickup_instructions: '',
+  budget: 0,
 })
+const budgetYuan = ref('0.00')
 
 function statusLabel(status: EventRecord['status']) {
   return { draft: '草稿', active: '进行中', closed: '已关闭' }[status]
@@ -46,11 +48,21 @@ async function load() {
   }
 }
 
+async function refreshList() {
+  error.value = ''
+  await load()
+}
+
 async function createEvent() {
+  const budget = Math.round(Number(budgetYuan.value) * 100)
+  if (!Number.isFinite(budget) || budget < 0 || !/^\d+(\.\d{1,2})?$/.test(budgetYuan.value)) {
+    error.value = '比赛总预算必须是最多两位小数的非负金额'
+    return
+  }
   busy.value = true
   error.value = ''
   try {
-    const payload = { ...form, redemption_deadline: new Date(form.redemption_deadline).toISOString() }
+    const payload = { ...form, budget, redemption_deadline: new Date(form.redemption_deadline).toISOString() }
     const created = await api<EventRecord>('/api/admin/events', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -74,7 +86,7 @@ onMounted(load)
         <p class="text-sm font-semibold text-blue-600">PrizePass 后台</p>
         <h1 class="mt-1 text-3xl font-bold">比赛</h1>
       </div>
-      <div class="flex gap-2"><RouterLink class="btn-secondary" to="/admin/settings/notifications">通知设置</RouterLink><button class="btn-primary" @click="showCreate = true">新建比赛</button></div>
+      <div class="flex gap-2"><button class="btn-secondary" type="button" :disabled="loading" @click="refreshList">刷新状态</button><RouterLink class="btn-secondary" to="/admin/settings/notifications">通知设置</RouterLink><button class="btn-primary" @click="showCreate = true">新建比赛</button></div>
     </header>
 
     <p v-if="error" class="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ error }}</p>
@@ -113,6 +125,7 @@ onMounted(load)
           <label class="text-sm font-medium">兑换截止时间<input v-model="form.redemption_deadline" class="field mt-1" type="datetime-local" required /></label>
           <label class="text-sm font-medium">自提地点<textarea v-model="form.pickup_location" class="field mt-1" rows="2" required /></label>
           <label class="text-sm font-medium">自提说明<textarea v-model="form.pickup_instructions" class="field mt-1" rows="3" required /></label>
+          <label class="text-sm font-medium">比赛总预算（元）<input v-model="budgetYuan" class="field mt-1" inputmode="decimal" required /></label>
         </div>
         <button class="btn-primary mt-6 w-full" :disabled="busy">{{ busy ? '创建中…' : '创建草稿' }}</button>
       </form>

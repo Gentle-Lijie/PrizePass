@@ -160,4 +160,6 @@ def test_closed_event_invalidates_issued_code() -> None:
     event_id, code, _ = setup_redeemable(500, [("奖品", 100, 1)])
     closed = event_payload("closed")
     assert client.put(f"/api/admin/events/{event_id}", headers=ADMIN, json=closed).status_code == 200
-    assert client.post("/api/public/code/verify", headers={"X-Redemption-Code": code}).status_code == 401
+    response = client.post("/api/public/code/verify", headers={"X-Redemption-Code": code})
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "event_closed"

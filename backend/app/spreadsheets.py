@@ -10,7 +10,7 @@ from openpyxl import Workbook, load_workbook
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 MAX_ROWS = 10_000
-PRIZE_HEADERS = ["name", "image", "real_value", "redeem_value", "stock", "description"]
+PRIZE_HEADERS = ["name", "image", "real_value", "purchase_value", "redeem_value", "stock", "description", "jd_url"]
 INTEGER_RE = re.compile(r"^(0|[1-9]\d*)$")
 MONEY_RE = re.compile(r"^(0|[1-9]\d*)(?:\.(\d{1,2}))?$")
 
@@ -67,16 +67,16 @@ def parse_positive_integer(value: Any, label: str) -> int:
     return parsed
 
 
-def parse_money_to_cents(value: Any) -> int:
+def parse_money_to_cents(value: Any, label: str = "真实价值") -> int:
     text = str(value).strip() if value is not None else ""
     if not MONEY_RE.fullmatch(text):
-        raise ValueError("真实价值必须是最多两位小数的非负金额")
+        raise ValueError(f"{label}必须是最多两位小数的非负金额")
     try:
         cents = int(Decimal(text) * 100)
     except InvalidOperation as exc:
-        raise ValueError("真实价值格式错误") from exc
+        raise ValueError(f"{label}格式错误") from exc
     if cents > 4_294_967_295:
-        raise ValueError("真实价值过大")
+        raise ValueError(f"{label}过大")
     return cents
 
 

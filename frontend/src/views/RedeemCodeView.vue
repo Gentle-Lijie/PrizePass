@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { api } from '@/api/client'
+import { api, ApiError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useRedemptionStore } from '@/stores/redemption'
 
@@ -13,6 +13,15 @@ const auth = useAuthStore()
 const redemption = useRedemptionStore()
 const router = useRouter()
 
+const codeErrorMessages: Record<string, string> = {
+  invalid_redemption_code: '兑换码不存在，请检查后重试',
+  redemption_code_redeemed: '该兑换码已使用',
+  redemption_code_disabled: '该兑换码已被撤销，请联系管理员',
+  event_not_active: '比赛尚未开放兑换，请稍后再试',
+  event_closed: '比赛兑换已关闭',
+  redemption_expired: '该比赛已超过兑换截止时间',
+}
+
 async function verify() {
   busy.value = true
   error.value = ''
@@ -21,9 +30,11 @@ async function verify() {
   try {
     await api('/api/public/code/verify', { method: 'POST' })
     await router.push('/redeem/prizes')
-  } catch {
+  } catch (caught) {
     auth.clearRedemptionCode()
-    error.value = '兑换码无效或当前不可使用'
+    error.value = caught instanceof ApiError
+      ? (codeErrorMessages[caught.code] ?? caught.message)
+      : '暂时无法连接服务器，请稍后重试'
   } finally {
     busy.value = false
   }

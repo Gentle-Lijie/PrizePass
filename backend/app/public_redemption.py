@@ -77,17 +77,22 @@ def usable_code(db: Session, raw_code: str | None, *, lock: bool = False) -> tup
     if lock:
         statement = statement.with_for_update()
     code = db.scalar(statement)
-    if code is None or code.status is not CodeStatus.ISSUED:
-        fail(401 if not lock else 409, "invalid_redemption_code", "兑换码无效或当前不可使用")
+    if code is None:
+        fail(401 if not lock else 409, "invalid_redemption_code", "兑换码不存在，请检查后重试")
+    if code.status is CodeStatus.REDEEMED:
+        fail(409, "redemption_code_redeemed", "该兑换码已使用")
+    if code.status is CodeStatus.DISABLED:
+        fail(409, "redemption_code_disabled", "该兑换码已被撤销")
     event = db.get(Event, code.event_id)
     winner = db.get(Winner, code.winner_id)
-    if (
-        event is None
-        or winner is None
-        or event.status is not EventStatus.ACTIVE
-        or event.redemption_deadline <= now_utc_naive()
-    ):
-        fail(401 if not lock else 409, "redemption_unavailable", "兑换码无效或当前不可使用")
+    if event is None or winner is None:
+        fail(409, "redemption_data_invalid", "兑换码关联数据不完整，请联系管理员")
+    if event.status is EventStatus.DRAFT:
+        fail(409, "event_not_active", "比赛尚未开放兑换，请稍后再试")
+    if event.status is EventStatus.CLOSED:
+        fail(409, "event_closed", "比赛兑换已关闭")
+    if event.redemption_deadline <= now_utc_naive():
+        fail(409, "redemption_expired", "该比赛已超过兑换截止时间")
     return code, event, winner
 
 
@@ -138,6 +143,7 @@ def redemption_prizes(db: DbSession, code_value: Annotated[str, Depends(code_hea
             "id": prize.id,
             "name": prize.name,
             "image": prize.image,
+            "jd_url": prize.jd_url,
             "real_value": prize.real_value,
             "redeem_value": prize.redeem_value,
             "stock": prize.stock,
@@ -241,6 +247,7 @@ def submit_redemption(
                     prize_name_snapshot=prize.name,
                     prize_image_snapshot=prize.image,
                     real_value_snapshot=prize.real_value,
+                    purchase_value_snapshot=prize.purchase_value,
                     redeem_value_snapshot=prize.redeem_value,
                     quantity=quantity,
                     line_redeem_value=line_value,

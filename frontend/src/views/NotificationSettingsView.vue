@@ -91,6 +91,17 @@
         }
     }
 
+    async function refreshForm() {
+        busy.value = true;
+        error.value = '';
+        try {
+            await load();
+            notice.value = '表单数据已刷新';
+        } finally {
+            busy.value = false;
+        }
+    }
+
     async function saveTemplate(template: NotificationTemplateRecord) {
         busy.value = true;
         error.value = '';
@@ -100,6 +111,7 @@
                 body: JSON.stringify({ text_template: template.text_template, html_template: template.html_template }),
             });
             notice.value = '模板已保存';
+            await load();
         } catch (caught) {
             error.value = caught instanceof Error ? caught.message : '保存失败';
         } finally {
@@ -214,7 +226,7 @@
           <h2 class="text-xl font-bold">场景通知路由</h2>
           <p class="mt-2 text-sm text-slate-500">可为同一场景选择多个渠道和收件对象；设置仅影响之后创建的任务。</p>
         </div>
-        <button class="btn-primary" :disabled="busy" @click="saveRouting">保存通知路由</button>
+        <div class="flex gap-2"><button class="btn-secondary" type="button" :disabled="busy" @click="refreshForm">刷新表单</button><button class="btn-primary" :disabled="busy" @click="saveRouting">保存通知路由</button></div>
       </div>
       <div class="mt-4 overflow-auto rounded-xl border border-slate-200 bg-white">
         <table class="w-full min-w-[920px] text-left text-sm">
@@ -244,7 +256,7 @@
     </section>
 
     <section class="mt-8">
-      <h2 class="text-xl font-bold">通知模板</h2>
+      <div class="flex items-center justify-between gap-3"><h2 class="text-xl font-bold">通知模板</h2><button class="btn-secondary" type="button" :disabled="busy" @click="refreshForm">刷新表单</button></div>
       <p class="mt-2 text-sm text-slate-500">纯文本正文始终保留；HTML 留空时邮件自动退回纯文本。</p>
       <div class="mt-4 grid gap-4">
         <article v-for="template in templates" :key="template.event_type" class="card">
@@ -267,7 +279,7 @@
     </section>
 
     <section class="mt-8">
-      <h2 class="text-xl font-bold">最近通知任务</h2>
+      <div class="flex items-center justify-between gap-3"><h2 class="text-xl font-bold">最近通知任务</h2><button class="btn-secondary" type="button" :disabled="busy" @click="refreshForm">刷新状态</button></div>
       <div class="mt-4 overflow-auto rounded-xl border border-slate-200 bg-white">
         <table class="w-full min-w-[900px] text-left text-sm">
           <thead class="bg-slate-50">
