@@ -7,13 +7,14 @@ from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .admin_events import get_event_or_404
+from .admin_events import get_event_or_404, maybe_open_event
 from .auth import require_admin_password
 from .config import get_settings
 from .database import get_db
 from .http import fail
 from .models import (
     CodeStatus,
+    Event,
     NotificationChannel,
     NotificationJob,
     NotificationStatus,
@@ -66,6 +67,13 @@ class ResendNotificationRequest(StrictModel):
 
 
 class QuotaUpdateRequest(StrictModel):
+    quota: Annotated[int, Field(gt=0, le=4_294_967_295)]
+
+
+class WinnerCreate(StrictModel):
+    external_id: Annotated[str | None, Field(default=None, max_length=200)] = None
+    name: Annotated[str, Field(min_length=1, max_length=100)]
+    email: Annotated[str, Field(min_length=3, max_length=320)]
     quota: Annotated[int, Field(gt=0, le=4_294_967_295)]
 
 
@@ -180,6 +188,57 @@ async def validate_winners(event_id: int, db: DbSession, file: Annotated[UploadF
     return validate_winner_table(db, event_id, file.filename or "", await file.read(MAX_FILE_SIZE + 1))
 
 
+def issue_winner(
+    db: Session,
+    event: Event,
+    *,
+    name: str,
+    email: str,
+    quota: int,
+    external_id: str | None,
+) -> Winner:
+    """创建获奖人、签发兑换码并排发 code_issued 通知。调用方负责 commit。"""
+    identity_key = f"external:{external_id}" if external_id else f"email:{email}"
+    if db.scalar(
+        select(Winner.id).where(
+            Winner.event_id == event.id, Winner.identity_key == identity_key
+        )
+    ):
+        fail(409, "winner_exists", "该获奖人在当前比赛中已存在")
+    code_value = generate_codes(db, 1)[0]
+    text_template, html_template = template_content(db, "code_issued")
+    winner = Winner(
+        event_id=event.id,
+        identity_key=identity_key,
+        external_id=external_id,
+        name=name,
+        email=email,
+        quota=quota,
+    )
+    db.add(winner)
+    db.flush()
+    code = RedemptionCode(
+        event_id=event.id,
+        winner_id=winner.id,
+        code=code_value,
+        quota=winner.quota,
+        status=CodeStatus.ISSUED,
+    )
+    db.add(code)
+    context = code_issued_context(winner, code_value, event)
+    text_rendered = render_template(text_template, context)
+    html_rendered = render_html_template(html_template, context)
+    create_notification_jobs(
+        db,
+        event_type="code_issued",
+        text_rendered=text_rendered,
+        winner_email=winner.email,
+        html_rendered=html_rendered,
+        winner_id=winner.id,
+    )
+    return winner
+
+
 @router.post("/events/{event_id}/winners/import/confirm", status_code=201)
 async def confirm_winners(event_id: int, db: DbSession, file: Annotated[UploadFile, File()]) -> dict:
     event = get_event_or_404(db, event_id)
@@ -187,34 +246,39 @@ async def confirm_winners(event_id: int, db: DbSession, file: Annotated[UploadFi
     result = validate_winner_table(db, event_id, file.filename or "", content)
     if not result["valid"]:
         fail(422, "invalid_import", "表格存在错误，未导入任何获奖人", {"errors": result["errors"]})
-    codes = generate_codes(db, len(result["rows"]))
-    text_template, html_template = template_content(db, "code_issued")
-    for row, code_value in zip(result["rows"], codes, strict=True):
-        identity_key = f"external:{row['external_id']}" if row["external_id"] else f"email:{row['email']}"
-        winner = Winner(event_id=event_id, identity_key=identity_key, **row)
-        db.add(winner)
-        db.flush()
-        code = RedemptionCode(
-            event_id=event_id,
-            winner_id=winner.id,
-            code=code_value,
-            quota=winner.quota,
-            status=CodeStatus.ISSUED,
-        )
-        db.add(code)
-        context = code_issued_context(winner, code_value, event)
-        text_rendered = render_template(text_template, context)
-        html_rendered = render_html_template(html_template, context)
-        create_notification_jobs(
+    for row in result["rows"]:
+        issue_winner(
             db,
-            event_type="code_issued",
-            text_rendered=text_rendered,
-            winner_email=winner.email,
-            html_rendered=html_rendered,
-            winner_id=winner.id,
+            event,
+            name=row["name"],
+            email=row["email"],
+            quota=row["quota"],
+            external_id=row["external_id"],
         )
+    maybe_open_event(event)
     db.commit()
     return {"imported": len(result["rows"])}
+
+
+@router.post("/events/{event_id}/winners", status_code=201)
+def add_winner(event_id: int, payload: WinnerCreate, db: DbSession) -> dict:
+    event = get_event_or_404(db, event_id)
+    try:
+        email = normalize_email(payload.email)
+    except ValueError:
+        fail(422, "invalid_email", "邮箱格式不合法")
+    external_id = (payload.external_id or "").strip() or None
+    winner = issue_winner(
+        db,
+        event,
+        name=payload.name.strip(),
+        email=email,
+        quota=payload.quota,
+        external_id=external_id,
+    )
+    maybe_open_event(event)
+    db.commit()
+    return {"imported": 1, "id": winner.id}
 
 
 def winner_rows(db: Session, event_id: int) -> list[dict]:

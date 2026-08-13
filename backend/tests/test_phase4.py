@@ -165,3 +165,70 @@ def test_closed_event_invalidates_issued_code() -> None:
     response = client.post("/api/public/code/verify", headers={"X-Redemption-Code": code})
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "event_closed"
+
+
+def _create_draft_event() -> int:
+    created = client.post("/api/admin/events", headers=ADMIN, json=event_payload())
+    assert created.status_code == 201, created.text
+    return created.json()["id"]
+
+
+def test_importing_winners_auto_opens_draft_event() -> None:
+    event_id = _create_draft_event()
+    assert client.get(f"/api/admin/events/{event_id}", headers=ADMIN).json()["status"] == "draft"
+    stream = io.StringIO(newline="")
+    writer = csv.writer(stream)
+    writer.writerow(["name", "email", "quota"])
+    writer.writerow(["获奖人甲", "a@example.com", "300"])
+    imported = client.post(
+        f"/api/admin/events/{event_id}/winners/import/confirm",
+        headers=ADMIN,
+        files={"file": ("winners.csv", stream.getvalue().encode(), "text/csv")},
+    )
+    assert imported.status_code == 201, imported.text
+    assert client.get(f"/api/admin/events/{event_id}", headers=ADMIN).json()["status"] == "active"
+
+
+def test_add_winner_directly_auto_opens_and_issues_code() -> None:
+    event_id = _create_draft_event()
+    response = client.post(
+        f"/api/admin/events/{event_id}/winners",
+        headers=ADMIN,
+        json={"external_id": None, "name": "直接添加", "email": "direct@example.com", "quota": 200},
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["imported"] == 1
+    assert client.get(f"/api/admin/events/{event_id}", headers=ADMIN).json()["status"] == "active"
+    winner = client.get(f"/api/admin/events/{event_id}/winners", headers=ADMIN).json()[0]
+    assert winner["name"] == "直接添加"
+    assert winner["quota"] == 200
+    assert winner["code_status"] == "issued"
+
+
+def test_add_winner_rejects_duplicate() -> None:
+    event_id = _create_draft_event()
+    body = {"external_id": None, "name": "重复", "email": "dup@example.com", "quota": 100}
+    assert client.post(f"/api/admin/events/{event_id}/winners", headers=ADMIN, json=body).status_code == 201
+    second = client.post(f"/api/admin/events/{event_id}/winners", headers=ADMIN, json=body)
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "winner_exists"
+
+
+def test_add_winner_leaves_active_and_closed_unchanged() -> None:
+    for status in ("active", "closed"):
+        event_id = _create_draft_event()
+        # draft → active (→ closed); the state machine forbids draft → closed directly.
+        assert client.put(
+            f"/api/admin/events/{event_id}", headers=ADMIN, json=event_payload("active")
+        ).status_code == 200
+        if status == "closed":
+            assert client.put(
+                f"/api/admin/events/{event_id}", headers=ADMIN, json=event_payload("closed")
+            ).status_code == 200
+        response = client.post(
+            f"/api/admin/events/{event_id}/winners",
+            headers=ADMIN,
+            json={"external_id": None, "name": f"人-{status}", "email": f"{status}@example.com", "quota": 50},
+        )
+        assert response.status_code == 201, response.text
+        assert client.get(f"/api/admin/events/{event_id}", headers=ADMIN).json()["status"] == status

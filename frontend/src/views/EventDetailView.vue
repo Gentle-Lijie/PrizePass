@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 
 import { api, ApiError, downloadAdmin } from '@/api/client'
-import type { AdminRedemption, AdminRedemptionStatus, EventRecord, EventStatus, EventWrite, NotificationChannel, PrizeImportPreview, PrizeRecord, PrizeSummary, PrizeWrite, WinnerImportPreview, WinnerRecord } from '@/api/types'
+import type { AdminRedemption, AdminRedemptionStatus, EventRecord, EventStatus, EventWrite, NotificationChannel, PrizeImportPreview, PrizeRecord, PrizeSummary, PrizeWrite, WinnerCreate, WinnerImportPreview, WinnerRecord } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -31,6 +31,8 @@ const winnerImportFile = ref<File | null>(null)
 const winnerImportPreview = ref<WinnerImportPreview | null>(null)
 const notifyingWinner = ref<WinnerRecord | null>(null)
 const notificationChannels = ref<NotificationChannel[]>(['email'])
+const showWinnerForm = ref(false)
+const winnerForm = reactive<WinnerCreate>({ external_id: '', name: '', email: '', quota: 1 })
 
 const eventForm = reactive<EventWrite>({ name: '', description: null, status: 'draft', redemption_deadline: '', pickup_location: '', pickup_instructions: '', budget: 0 })
 const eventBudgetYuan = ref('0.00')
@@ -182,6 +184,25 @@ async function confirmWinnerImport() {
   } catch (caught) { showError(caught, '导入失败') } finally { busy.value = false }
 }
 
+function openWinnerForm() {
+  Object.assign(winnerForm, { external_id: '', name: '', email: '', quota: 1 })
+  showWinnerForm.value = true
+}
+
+async function saveWinner() {
+  const payload: WinnerCreate = {
+    external_id: winnerForm.external_id.trim() || null,
+    name: winnerForm.name.trim(),
+    email: winnerForm.email.trim(),
+    quota: Number(winnerForm.quota),
+  }
+  busy.value = true; error.value = ''
+  try {
+    await api(`/api/admin/events/${eventId}/winners`, { method: 'POST', body: JSON.stringify(payload) })
+    notice.value = '已添加获奖人并生成兑换码'; showWinnerForm.value = false; await load()
+  } catch (caught) { showError(caught, '添加失败') } finally { busy.value = false }
+}
+
 async function copyCode(code: string) {
   await navigator.clipboard.writeText(code)
   notice.value = '兑换码已复制'
@@ -321,6 +342,7 @@ onMounted(load)
         <button class="btn-secondary" @click="downloadAdmin(`/api/admin/events/${eventId}/winners/export?format=csv`, 'winners.csv')">导出 CSV</button>
         <button class="btn-secondary" @click="downloadAdmin(`/api/admin/events/${eventId}/winners/export?format=xlsx`, 'winners.xlsx')">导出 XLSX</button>
         <label class="btn-primary cursor-pointer">导入获奖人<input class="hidden" type="file" accept=".csv,.xlsx" @change="validateWinnerImport(($event.target as HTMLInputElement).files?.[0])" /></label>
+        <button class="btn-secondary" @click="openWinnerForm()">添加获奖人</button>
       </div>
       <div v-if="winnerImportPreview" class="card mt-4">
         <h3 class="font-semibold">导入预览 · {{ winnerImportPreview.count }} 人 · quota 合计 {{ winnerImportPreview.quota_total }}</h3>
@@ -374,6 +396,18 @@ onMounted(load)
       </form>
     </div>
 
+    <div v-if="showWinnerForm" class="fixed inset-0 z-20 grid place-items-center bg-slate-950/40 p-4" @click.self="showWinnerForm = false">
+      <form class="card w-full max-w-md" @submit.prevent="saveWinner">
+        <div class="flex justify-between"><h2 class="text-xl font-bold">添加获奖人</h2><button type="button" @click="showWinnerForm = false">关闭</button></div>
+        <div class="mt-5 grid gap-4">
+          <label class="text-sm font-medium">姓名<input v-model="winnerForm.name" class="field mt-1" maxlength="100" required /></label>
+          <label class="text-sm font-medium">邮箱<input v-model="winnerForm.email" class="field mt-1" type="email" maxlength="320" required /></label>
+          <label class="text-sm font-medium">额度<input v-model.number="winnerForm.quota" class="field mt-1" type="number" min="1" step="1" required /></label>
+          <label class="text-sm font-medium">external_id（选填）<input v-model="winnerForm.external_id" class="field mt-1" maxlength="200" /><span class="mt-1 block text-xs font-normal text-slate-500">留空则以邮箱作为去重标识</span></label>
+        </div>
+        <button class="btn-primary mt-6 w-full" :disabled="busy">添加并发码</button>
+      </form>
+    </div>
     <div v-if="notifyingWinner" class="fixed inset-0 z-30 grid place-items-center bg-slate-950/40 p-4" @click.self="notifyingWinner = null">
       <form class="card w-full max-w-md" @submit.prevent="resendNotification">
         <div class="flex items-center justify-between"><div><h2 class="text-xl font-bold">重新发送兑换通知</h2><p class="mt-1 text-sm text-slate-500">{{ notifyingWinner.name }} · {{ notifyingWinner.email }}</p></div><button type="button" @click="notifyingWinner = null">关闭</button></div>

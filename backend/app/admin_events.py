@@ -42,6 +42,12 @@ def get_event_or_404(db: Session, event_id: int) -> Event:
     return event
 
 
+def maybe_open_event(event: Event) -> None:
+    """草稿比赛在有获奖人/兑换码后自动开放兑换；active 保持，closed 不自动重开。"""
+    if event.status is EventStatus.DRAFT:
+        event.status = EventStatus.ACTIVE
+
+
 def get_prize_or_404(db: Session, prize_id: int) -> Prize:
     prize = db.get(Prize, prize_id)
     if prize is None:

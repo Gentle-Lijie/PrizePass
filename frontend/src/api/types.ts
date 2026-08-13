@@ -77,6 +77,13 @@ export interface WinnerRecord {
   created_at: string
 }
 
+export interface WinnerCreate {
+  external_id: string | null
+  name: string
+  email: string
+  quota: number
+}
+
 export type NotificationChannel = 'email' | 'webhook' | 'email_poster'
 
 export interface PrizeSummary {
