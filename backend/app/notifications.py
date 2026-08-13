@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from html import escape
 import re
+from urllib.parse import urlencode
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -194,7 +195,7 @@ def code_issued_context(winner: Winner, code: str, event) -> dict[str, str | int
         "event_name": event.name,
         "code": code,
         "quota": winner.quota,
-        "redemption_url": f"{settings.public_base_url.rstrip('/')}/redeem",
+        "redemption_url": f"{settings.public_base_url.rstrip('/')}/redeem?{urlencode({'code': code})}",
         "deadline": event.redemption_deadline.isoformat(sep=" "),
         "pickup_location": event.pickup_location,
         "pickup_instructions": event.pickup_instructions,

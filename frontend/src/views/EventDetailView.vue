@@ -105,10 +105,10 @@ async function savePrize() {
   const cents = Math.round(Number(prizeForm.realValueYuan) * 100)
   const purchaseCents = Math.round(Number(prizeForm.purchaseValueYuan) * 100)
   if (!Number.isFinite(cents) || cents < 0 || !/^\d+(\.\d{1,2})?$/.test(prizeForm.realValueYuan)) {
-    error.value = '参考价值必须是最多两位小数的非负金额'; return
+    error.value = '真实采购单价必须是最多两位小数的非负金额'; return
   }
   if (!Number.isFinite(purchaseCents) || purchaseCents < 0 || !/^\d+(\.\d{1,2})?$/.test(prizeForm.purchaseValueYuan)) {
-    error.value = '实际采购单价必须是最多两位小数的非负金额'; return
+    error.value = '用户展示价格必须是最多两位小数的非负金额'; return
   }
   const payload: PrizeWrite = { name: prizeForm.name, image: prizeForm.image, jd_url: prizeForm.jd_url || null, real_value: cents, purchase_value: purchaseCents, redeem_value: Number(prizeForm.redeem_value), stock: Number(prizeForm.stock), description: prizeForm.description || null }
   busy.value = true; error.value = ''
@@ -270,7 +270,7 @@ onMounted(load)
 
 <template>
   <main class="mx-auto max-w-7xl p-6 md:p-10">
-    <div class="flex justify-between"><RouterLink to="/admin/events" class="text-sm text-blue-600 hover:underline">← 返回比赛列表</RouterLink><RouterLink to="/admin/settings/notifications" class="text-sm text-blue-600 hover:underline">通知设置</RouterLink></div>
+    <div class="flex flex-wrap justify-between gap-3"><RouterLink to="/admin/events" class="text-sm text-blue-600 hover:underline">← 返回比赛列表</RouterLink><RouterLink to="/admin/settings/notifications" class="text-sm text-blue-600 hover:underline">通知设置</RouterLink></div>
     <header v-if="event" class="mt-4 flex flex-wrap items-end justify-between gap-4">
       <div><div class="flex items-center gap-3"><h1 class="text-3xl font-bold">{{ event.name }}</h1><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">{{ statusLabel(event.status) }}</span></div><p class="mt-2 text-sm text-slate-500">兑换截止 {{ new Date(event.redemption_deadline).toLocaleString() }}</p></div>
       <button class="btn-secondary" type="button" :disabled="busy" @click="refreshForm">{{ busy ? '刷新中…' : '刷新表单' }}</button>
@@ -278,8 +278,8 @@ onMounted(load)
     <p v-if="error" class="mt-5 rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ error }}</p>
     <p v-if="notice" class="mt-5 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{{ notice }}</p>
 
-    <nav class="mt-8 flex gap-2 border-b border-slate-200">
-      <button v-for="item in [{ key: 'prizes', label: '奖品' }, { key: 'winners', label: '获奖人' }, { key: 'redemptions', label: '兑换记录' }, { key: 'settings', label: '比赛设置' }]" :key="item.key" class="border-b-2 px-4 py-3 text-sm font-medium" :class="tab === item.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'" @click="tab = item.key as typeof tab">{{ item.label }}</button>
+    <nav class="mt-8 flex gap-1 overflow-x-auto border-b border-slate-200">
+      <button v-for="item in [{ key: 'prizes', label: '奖品' }, { key: 'winners', label: '获奖人' }, { key: 'redemptions', label: '兑换记录' }, { key: 'settings', label: '比赛设置' }]" :key="item.key" class="shrink-0 border-b-2 px-3 py-3 text-sm font-medium sm:px-4" :class="tab === item.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'" @click="tab = item.key as typeof tab">{{ item.label }}</button>
     </nav>
 
     <section v-if="tab === 'prizes'" class="mt-6">
@@ -302,14 +302,14 @@ onMounted(load)
       <div v-if="importPreview" class="card mt-4">
         <h3 class="font-semibold">导入预览 · {{ importPreview.rows.length }} 行</h3>
         <ul v-if="importPreview.errors.length" class="mt-3 space-y-1 text-sm text-red-700"><li v-for="issue in importPreview.errors" :key="`${issue.row}-${issue.field}-${issue.message}`">第 {{ issue.row }} 行 · {{ issue.field }}：{{ issue.message }}</li></ul>
-        <div class="mt-4 max-h-48 overflow-auto"><table class="w-full text-left text-sm"><thead><tr><th class="p-2">名称</th><th class="p-2">京东链接</th><th class="p-2">参考价值</th><th class="p-2">采购单价</th><th class="p-2">抵扣</th><th class="p-2">库存</th></tr></thead><tbody><tr v-for="(row, index) in importPreview.rows" :key="index" class="border-t"><td class="p-2">{{ row.name }}</td><td class="max-w-40 truncate p-2">{{ row.jd_url || '—' }}</td><td class="p-2">{{ row.real_value }}</td><td class="p-2">{{ row.purchase_value }}</td><td class="p-2">{{ row.redeem_value }}</td><td class="p-2">{{ row.stock }}</td></tr></tbody></table></div>
+        <div class="mt-4 max-h-48 overflow-auto"><table class="w-full text-left text-sm"><thead><tr><th class="p-2">名称</th><th class="p-2">京东链接</th><th class="p-2">真实采购价</th><th class="p-2">展示价格</th><th class="p-2">抵扣</th><th class="p-2">库存</th></tr></thead><tbody><tr v-for="(row, index) in importPreview.rows" :key="index" class="border-t"><td class="p-2">{{ row.name }}</td><td class="max-w-40 truncate p-2">{{ row.jd_url || '—' }}</td><td class="p-2">{{ row.real_value }}</td><td class="p-2">{{ row.purchase_value }}</td><td class="p-2">{{ row.redeem_value }}</td><td class="p-2">{{ row.stock }}</td></tr></tbody></table></div>
         <button class="btn-primary mt-4" :disabled="!importPreview.valid || busy" @click="confirmImport">确认全部导入</button>
       </div>
 
-      <div class="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table class="w-full text-left text-sm">
-          <thead class="bg-slate-50 text-slate-600"><tr><th class="p-4">奖品</th><th class="p-4">参考价值</th><th class="p-4">实际采购单价</th><th class="p-4">抵扣额度</th><th class="p-4">库存</th><th class="p-4">京东链接</th><th class="p-4 text-right">操作</th></tr></thead>
-          <tbody><tr v-for="prize in prizes" :key="prize.id" class="border-t border-slate-100"><td class="p-4"><div class="flex items-center gap-3"><img :src="prize.image" :alt="prize.name" class="h-12 w-12 rounded-lg object-cover" /><div><strong>{{ prize.name }}</strong><p class="max-w-xs truncate text-xs text-slate-500">{{ prize.description }}</p></div></div></td><td class="p-4">{{ money(prize.real_value) }}</td><td class="p-4 font-medium">{{ money(prize.purchase_value) }}</td><td class="p-4">{{ prize.redeem_value }}</td><td class="p-4">{{ prize.stock }}</td><td class="p-4"><a v-if="prize.jd_url" :href="prize.jd_url" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">打开链接 ↗</a><span v-else class="text-slate-400">—</span></td><td class="p-4 text-right"><button class="text-blue-600" @click="openPrize(prize)">编辑</button><button class="ml-4 text-red-600" @click="removePrize(prize)">删除</button></td></tr><tr v-if="prizes.length === 0"><td colspan="7" class="p-10 text-center text-slate-500">暂无奖品</td></tr></tbody>
+      <div class="mt-5 overflow-auto rounded-xl border border-slate-200 bg-white">
+        <table class="w-full min-w-[900px] text-left text-sm">
+          <thead class="bg-slate-50 text-slate-600"><tr><th class="p-4">奖品</th><th class="p-4">真实采购单价</th><th class="p-4">用户展示价格</th><th class="p-4">抵扣额度</th><th class="p-4">库存 / 待采购</th><th class="p-4">京东链接</th><th class="p-4 text-right">操作</th></tr></thead>
+          <tbody><tr v-for="prize in prizes" :key="prize.id" class="border-t border-slate-100"><td class="p-4"><div class="flex items-center gap-3"><img :src="prize.image" :alt="prize.name" class="h-12 w-12 rounded-lg object-cover" /><div><strong>{{ prize.name }}</strong><p class="max-w-xs truncate text-xs text-slate-500">{{ prize.description }}</p></div></div></td><td class="p-4">{{ money(prize.real_value) }}</td><td class="p-4 font-medium">{{ money(prize.purchase_value) }}</td><td class="p-4">{{ prize.redeem_value }}</td><td class="p-4" :class="prize.stock < 0 ? 'font-medium text-amber-600' : ''">{{ prize.stock < 0 ? `待采购 ${Math.abs(prize.stock)}` : prize.stock }}</td><td class="p-4"><a v-if="prize.jd_url" :href="prize.jd_url" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">打开链接 ↗</a><span v-else class="text-slate-400">—</span></td><td class="p-4 text-right"><button class="text-blue-600" @click="openPrize(prize)">编辑</button><button class="ml-4 text-red-600" @click="removePrize(prize)">删除</button></td></tr><tr v-if="prizes.length === 0"><td colspan="7" class="p-10 text-center text-slate-500">暂无奖品</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -347,7 +347,7 @@ onMounted(load)
       </div>
     </section>
 
-    <form v-else class="card mt-6 max-w-2xl" @submit.prevent="saveEvent">
+    <form v-else class="card mt-6 w-full max-w-2xl" @submit.prevent="saveEvent">
       <div class="grid gap-4">
         <label class="text-sm font-medium">名称<input v-model="eventForm.name" class="field mt-1" maxlength="200" required /></label>
         <label class="text-sm font-medium">说明<textarea v-model="eventForm.description" class="field mt-1" rows="3" /></label>
@@ -357,7 +357,7 @@ onMounted(load)
         <label class="text-sm font-medium">比赛总预算（元）<input v-model="eventBudgetYuan" class="field mt-1" inputmode="decimal" required /><span class="mt-1 block text-xs font-normal text-slate-500">用于对比奖品采购总额并提示预算余量</span></label>
         <label class="text-sm font-medium">状态<select v-model="eventForm.status" class="field mt-1"><option v-for="status in allowedStatuses" :key="status" :value="status">{{ statusLabel(status) }}</option></select></label>
       </div>
-      <div class="mt-6 flex gap-2"><button class="btn-primary" :disabled="busy">保存比赛设置</button><button class="btn-secondary" type="button" :disabled="busy" @click="refreshForm">刷新表单</button></div>
+      <div class="mt-6 flex flex-col gap-2 sm:flex-row"><button class="btn-primary" :disabled="busy">保存比赛设置</button><button class="btn-secondary" type="button" :disabled="busy" @click="refreshForm">刷新表单</button></div>
     </form>
 
     <div v-if="showPrizeForm" class="fixed inset-0 z-20 grid place-items-center bg-slate-950/40 p-4" @click.self="showPrizeForm = false">
@@ -367,7 +367,7 @@ onMounted(load)
           <label class="text-sm font-medium">名字<input v-model="prizeForm.name" class="field mt-1" maxlength="200" required /></label>
           <fieldset><legend class="text-sm font-medium">图片</legend><div class="mt-2 flex gap-4 text-sm"><label><input v-model="imageMode" type="radio" value="url" /> HTTPS 外链</label><label><input v-model="imageMode" type="radio" value="upload" /> 本地上传</label></div><input v-if="imageMode === 'url'" v-model="prizeForm.image" class="field mt-2" type="url" pattern="https://.*" required /><div v-else class="mt-2"><input type="file" accept="image/jpeg,image/png,image/webp" @change="uploadImage(($event.target as HTMLInputElement).files?.[0])" /><p v-if="prizeForm.image" class="mt-2 break-all text-xs text-slate-500">{{ prizeForm.image }}</p></div></fieldset>
           <label class="text-sm font-medium">京东商品链接（选填）<input v-model="prizeForm.jd_url" class="field mt-1" type="url" pattern="https://.*" maxlength="2000" placeholder="https://item.jd.com/..." /><span class="mt-1 block text-xs font-normal text-slate-500">填写后，用户选择奖品时可跳转查看商品详情</span></label>
-          <div class="grid grid-cols-2 gap-3 md:grid-cols-4"><label class="text-sm font-medium">参考价值（元）<input v-model="prizeForm.realValueYuan" class="field mt-1" inputmode="decimal" required /></label><label class="text-sm font-medium">实际采购单价（元）<input v-model="prizeForm.purchaseValueYuan" class="field mt-1" inputmode="decimal" required /></label><label class="text-sm font-medium">抵扣额度<input v-model.number="prizeForm.redeem_value" class="field mt-1" type="number" min="1" step="1" required /></label><label class="text-sm font-medium">库存<input v-model.number="prizeForm.stock" class="field mt-1" type="number" min="0" step="1" required /></label></div>
+          <div class="grid grid-cols-2 gap-3 md:grid-cols-4"><label class="text-sm font-medium">真实采购单价（元）<input v-model="prizeForm.realValueYuan" class="field mt-1" inputmode="decimal" required /></label><label class="text-sm font-medium">用户展示价格（元）<input v-model="prizeForm.purchaseValueYuan" class="field mt-1" inputmode="decimal" required /></label><label class="text-sm font-medium">抵扣额度<input v-model.number="prizeForm.redeem_value" class="field mt-1" type="number" min="1" step="1" required /></label><label class="text-sm font-medium">库存<input v-model.number="prizeForm.stock" class="field mt-1" type="number" step="1" required /></label></div>
           <label class="text-sm font-medium">描述<textarea v-model="prizeForm.description" class="field mt-1" maxlength="5000" rows="4" /></label>
         </div>
         <button class="btn-primary mt-6 w-full" :disabled="busy || !prizeForm.image">保存奖品</button>
@@ -389,7 +389,7 @@ onMounted(load)
         <p v-if="selectedRedemption.note" class="mt-4 rounded-lg bg-slate-50 p-3 text-sm">备注：{{ selectedRedemption.note }}</p>
         <div class="mt-5"><h3 class="font-semibold">奖品快照</h3><div v-for="item in selectedRedemption.items" :key="item.id" class="mt-3 flex items-center gap-3 border-t pt-3"><img :src="item.prize_image" :alt="item.prize_name" class="h-12 w-12 rounded object-cover" /><div class="flex-1"><strong>{{ item.prize_name }}</strong><p class="text-xs text-slate-500">抵扣 {{ item.redeem_value }} × {{ item.quantity }}</p></div><strong>{{ item.line_redeem_value }}</strong></div></div>
         <div class="mt-5 rounded-lg bg-blue-50 p-4 text-sm"><strong>自提信息</strong><p class="mt-1">{{ selectedRedemption.pickup_location }}</p><p class="mt-1 whitespace-pre-wrap text-slate-600">{{ selectedRedemption.pickup_instructions }}</p></div>
-        <div class="mt-5 flex justify-end gap-2"><button class="btn-secondary" type="button" :disabled="busy" @click="openRedemption(selectedRedemption.id)">刷新状态</button><button v-if="selectedRedemption.status === 'submitted'" class="btn-primary" @click="redemptionAction(selectedRedemption, 'ready')">标记待领取</button><button v-if="selectedRedemption.status === 'ready'" class="btn-primary" @click="redemptionAction(selectedRedemption, 'pickup')">标记已领取</button><button v-if="selectedRedemption.status === 'submitted' || selectedRedemption.status === 'ready'" class="btn-secondary text-red-600" @click="redemptionAction(selectedRedemption, 'cancel')">取消兑换</button></div>
+        <div class="mt-5 flex flex-col justify-end gap-2 sm:flex-row"><button class="btn-secondary" type="button" :disabled="busy" @click="openRedemption(selectedRedemption.id)">刷新状态</button><button v-if="selectedRedemption.status === 'submitted'" class="btn-primary" @click="redemptionAction(selectedRedemption, 'ready')">标记待领取</button><button v-if="selectedRedemption.status === 'ready'" class="btn-primary" @click="redemptionAction(selectedRedemption, 'pickup')">标记已领取</button><button v-if="selectedRedemption.status === 'submitted' || selectedRedemption.status === 'ready'" class="btn-secondary text-red-600" @click="redemptionAction(selectedRedemption, 'cancel')">取消兑换</button></div>
       </section>
     </div>
   </main>

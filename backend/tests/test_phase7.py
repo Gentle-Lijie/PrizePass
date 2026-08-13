@@ -1,9 +1,13 @@
+from datetime import datetime
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.main import app
 from app.models import NotificationChannel, NotificationJob, RedemptionItem
+from app.notifications import code_issued_context
 from tests.conftest import test_engine
 from tests.test_phase2 import event_payload
 from tests.test_phase4 import setup_redeemable, submit
@@ -11,6 +15,18 @@ from tests.test_phase4 import setup_redeemable, submit
 
 client = TestClient(app)
 ADMIN = {"X-Admin-Password": "prizepass-dev-admin"}
+
+
+def test_code_notification_url_contains_redeem_code() -> None:
+    winner = SimpleNamespace(name="测试", email="winner@example.com", quota=300)
+    event = SimpleNamespace(
+        name="测试比赛",
+        redemption_deadline=datetime(2026, 12, 31, 12, 0),
+        pickup_location="服务台",
+        pickup_instructions="凭单领取",
+    )
+    context = code_issued_context(winner, "ABCD2345EFGH", event)
+    assert context["redemption_url"].endswith("/redeem?code=ABCD2345EFGH")
 
 
 def test_purchase_summary_uses_snapshot_and_picked_up_status() -> None:
@@ -59,7 +75,7 @@ def test_purchase_summary_uses_snapshot_and_picked_up_status() -> None:
         f"/api/admin/events/{event_id}/prizes/summary", headers=ADMIN
     ).json()
     assert initial == {
-        "total_purchase_value": 10_000,
+        "total_purchase_value": 16_000,
         "claimed_purchase_value": 0,
         "budget": 12_000,
     }
@@ -69,10 +85,12 @@ def test_purchase_summary_uses_snapshot_and_picked_up_status() -> None:
     summary = client.get(
         f"/api/admin/events/{event_id}/prizes/summary", headers=ADMIN
     ).json()
-    assert summary["total_purchase_value"] == 10_000
+    assert summary["total_purchase_value"] == 16_000
     assert summary["claimed_purchase_value"] == 0
     with Session(test_engine) as session:
-        assert session.scalar(select(RedemptionItem.purchase_value_snapshot)) == 5_000
+        item = session.scalar(select(RedemptionItem))
+        assert item.real_value_snapshot == 8_000
+        assert item.purchase_value_snapshot == 5_000
 
     redemption_id = redeemed.json()["id"]
     assert client.post(
@@ -84,7 +102,7 @@ def test_purchase_summary_uses_snapshot_and_picked_up_status() -> None:
     claimed = client.get(
         f"/api/admin/events/{event_id}/prizes/summary", headers=ADMIN
     ).json()
-    assert claimed["claimed_purchase_value"] == 5_000
+    assert claimed["claimed_purchase_value"] == 8_000
 
 
 def test_winner_resend_adjust_quota_and_revoke_code() -> None:

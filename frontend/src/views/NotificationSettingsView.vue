@@ -216,7 +216,7 @@
       </div>
       <div class="mt-5 flex flex-wrap items-end gap-3">
         <!-- <label class="text-sm font-medium">测试收件地址</label> -->
-        <input v-model="email" class="field mt-1 w-72" type="email" placeholder="name@example.com" /><button class="btn-secondary" :disabled="busy || !email" @click="testEmail">创建 SMTP 测试任务</button><button class="btn-secondary" :disabled="busy || !email || !configuration.email_poster" @click="testEmailPoster">创建 email-poster 测试任务</button><button class="btn-secondary" :disabled="busy || !configuration.webhook" @click="testWebhook">创建 Webhook 测试任务</button>
+        <input v-model="email" class="field mt-1 w-full sm:w-72" type="email" placeholder="name@example.com" /><button class="btn-secondary w-full sm:w-auto" :disabled="busy || !email" @click="testEmail">创建 SMTP 测试任务</button><button class="btn-secondary w-full sm:w-auto" :disabled="busy || !email || !configuration.email_poster" @click="testEmailPoster">创建 email-poster 测试任务</button><button class="btn-secondary w-full sm:w-auto" :disabled="busy || !configuration.webhook" @click="testWebhook">创建 Webhook 测试任务</button>
       </div>
     </section>
 

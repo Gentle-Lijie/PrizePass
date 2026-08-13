@@ -131,11 +131,7 @@ def redemption_prizes(db: DbSession, code_value: Annotated[str, Depends(code_hea
     code, event, _ = usable_code(db, code_value)
     prizes = db.scalars(
         select(Prize)
-        .where(
-            Prize.event_id == event.id,
-            Prize.stock > 0,
-            Prize.redeem_value <= code.quota,
-        )
+        .where(Prize.event_id == event.id)
         .order_by(Prize.id)
     ).all()
     return [
@@ -144,9 +140,8 @@ def redemption_prizes(db: DbSession, code_value: Annotated[str, Depends(code_hea
             "name": prize.name,
             "image": prize.image,
             "jd_url": prize.jd_url,
-            "real_value": prize.real_value,
+            "purchase_value": prize.purchase_value,
             "redeem_value": prize.redeem_value,
-            "stock": prize.stock,
             "description": prize.description,
         }
         for prize in prizes
@@ -190,9 +185,6 @@ def submit_redemption(
         )
         if len(prizes) != len(sorted_ids) or any(prize.event_id != event.id for prize in prizes):
             fail(409, "invalid_prize", "购物篮包含不属于当前比赛的奖品")
-        for prize in prizes:
-            if quantities[prize.id] > prize.stock:
-                fail(409, "insufficient_stock", f"奖品“{prize.name}”库存不足")
         total = sum(prize.redeem_value * quantities[prize.id] for prize in prizes)
         if total > code.quota:
             fail(409, "quota_exceeded", "所选奖品总抵扣额度超过 quota")

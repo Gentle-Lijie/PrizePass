@@ -111,9 +111,8 @@ export interface PublicPrize {
   name: string
   image: string
   jd_url: string | null
-  real_value: number
+  purchase_value: number
   redeem_value: number
-  stock: number
   description: string | null
 }
 

@@ -86,7 +86,7 @@ onMounted(load)
         <p class="text-sm font-semibold text-blue-600">PrizePass 后台</p>
         <h1 class="mt-1 text-3xl font-bold">比赛</h1>
       </div>
-      <div class="flex gap-2"><button class="btn-secondary" type="button" :disabled="loading" @click="refreshList">刷新状态</button><RouterLink class="btn-secondary" to="/admin/settings/notifications">通知设置</RouterLink><button class="btn-primary" @click="showCreate = true">新建比赛</button></div>
+      <div class="flex flex-wrap gap-2"><button class="btn-secondary" type="button" :disabled="loading" @click="refreshList">刷新状态</button><RouterLink class="btn-secondary" to="/admin/settings/notifications">通知设置</RouterLink><button class="btn-primary" @click="showCreate = true">新建比赛</button></div>
     </header>
 
     <p v-if="error" class="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ error }}</p>
@@ -109,7 +109,7 @@ onMounted(load)
           </div>
           <p class="mt-2 text-sm text-slate-500">截止 {{ localTime(event.redemption_deadline) }}</p>
         </div>
-        <div class="flex gap-8 text-center text-sm">
+        <div class="flex gap-6 text-center text-sm sm:gap-8">
           <div><strong class="block text-xl">{{ event.winner_count }}</strong><span class="text-slate-500">获奖人</span></div>
           <div><strong class="block text-xl">{{ event.redemption_count }}</strong><span class="text-slate-500">兑换</span></div>
         </div>

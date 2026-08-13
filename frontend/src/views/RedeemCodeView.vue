@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import { api, ApiError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
@@ -12,6 +12,7 @@ const busy = ref(false)
 const auth = useAuthStore()
 const redemption = useRedemptionStore()
 const router = useRouter()
+const route = useRoute()
 
 const codeErrorMessages: Record<string, string> = {
   invalid_redemption_code: '兑换码不存在，请检查后重试',
@@ -39,6 +40,14 @@ async function verify() {
     busy.value = false
   }
 }
+
+onMounted(async () => {
+  const queryCode = Array.isArray(route.query.code) ? route.query.code[0] : route.query.code
+  if (!queryCode) return
+  code.value = queryCode.trim().toUpperCase()
+  await router.replace({ path: '/redeem' })
+  await verify()
+})
 </script>
 
 <template>

@@ -100,7 +100,8 @@ class Prize(Base):
     real_value: Mapped[int] = uint()
     purchase_value: Mapped[int] = mapped_column(INTEGER(unsigned=True), nullable=False, server_default="0")
     redeem_value: Mapped[int] = uint()
-    stock: Mapped[int] = uint()
+    # Signed so accepted redemptions can create a back-order when demand exceeds stock.
+    stock: Mapped[int] = mapped_column(BigInteger, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()

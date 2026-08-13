@@ -120,14 +120,18 @@ def list_prizes(event_id: int, db: DbSession) -> list[Prize]:
 def prize_summary(event_id: int, db: DbSession) -> dict[str, int]:
     event = get_event_or_404(db, event_id)
     available_value = db.scalar(
-        select(func.coalesce(func.sum(Prize.purchase_value * Prize.stock), 0)).where(
+        select(
+            func.coalesce(
+                func.sum(Prize.real_value * func.greatest(Prize.stock, 0)), 0
+            )
+        ).where(
             Prize.event_id == event_id
         )
     ) or 0
     allocated_value = db.scalar(
         select(
             func.coalesce(
-                func.sum(RedemptionItem.purchase_value_snapshot * RedemptionItem.quantity), 0
+                func.sum(RedemptionItem.real_value_snapshot * RedemptionItem.quantity), 0
             )
         )
         .join(Redemption, Redemption.id == RedemptionItem.redemption_id)
@@ -139,7 +143,7 @@ def prize_summary(event_id: int, db: DbSession) -> dict[str, int]:
     claimed_value = db.scalar(
         select(
             func.coalesce(
-                func.sum(RedemptionItem.purchase_value_snapshot * RedemptionItem.quantity), 0
+                func.sum(RedemptionItem.real_value_snapshot * RedemptionItem.quantity), 0
             )
         )
         .join(Redemption, Redemption.id == RedemptionItem.redemption_id)
@@ -266,7 +270,7 @@ def validate_prize_table(filename: str, content: bytes) -> dict:
             "image": lambda value: str(value).strip() if value is not None else "",
             "jd_url": lambda value: str(value).strip() if value is not None else "",
             "real_value": parse_money_to_cents,
-            "purchase_value": lambda value: parse_money_to_cents(value, "采购单价"),
+            "purchase_value": lambda value: parse_money_to_cents(value, "展示价格"),
             "redeem_value": lambda value: parse_positive_integer(value, "抵扣价值"),
             "stock": lambda value: parse_nonnegative_integer(value, "库存"),
             "description": lambda value: str(value).strip() if value is not None else "",
@@ -319,7 +323,7 @@ async def confirm_prize_import(event_id: int, db: DbSession, file: Annotated[Upl
             **{
                 **row,
                 "real_value": parse_money_to_cents(row["real_value"]),
-                "purchase_value": parse_money_to_cents(row["purchase_value"], "采购单价"),
+                "purchase_value": parse_money_to_cents(row["purchase_value"], "展示价格"),
                 "description": row["description"] or None,
             }
         )

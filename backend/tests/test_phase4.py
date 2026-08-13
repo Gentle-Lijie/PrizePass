@@ -83,7 +83,9 @@ def test_public_endpoints_require_header_and_filter_prizes() -> None:
     assert context.status_code == 200
     visible = client.get("/api/public/redemption/prizes", headers={"X-Redemption-Code": code})
     assert visible.status_code == 200
-    assert [prize["id"] for prize in visible.json()] == [prizes[0]]
+    assert [prize["id"] for prize in visible.json()] == prizes
+    assert all("stock" not in prize for prize in visible.json())
+    assert all("real_value" not in prize for prize in visible.json())
     assert "set-cookie" not in visible.headers
 
 
@@ -124,16 +126,16 @@ def test_multi_prize_redemption_is_atomic_and_snapshotted() -> None:
         assert snapshot.redeem_value_snapshot == 200
 
 
-def test_over_quota_and_insufficient_stock_rollback_everything() -> None:
+def test_over_quota_rolls_back_but_stock_shortage_creates_backorder() -> None:
     _, code, prizes = setup_redeemable(500, [("超额奖品", 501, 2), ("少库存", 100, 1)])
     over = submit(code, [{"prize_id": prizes[0], "quantity": 1}])
     assert over.status_code == 409
     insufficient = submit(code, [{"prize_id": prizes[1], "quantity": 2}])
-    assert insufficient.status_code == 409
+    assert insufficient.status_code == 201
     with Session(test_engine) as session:
-        assert session.scalar(select(func.count(Redemption.id))) == 0
-        assert session.scalars(select(Prize.stock).order_by(Prize.id)).all() == [2, 1]
-        assert session.scalar(select(RedemptionCode).where(RedemptionCode.code == code)).status is CodeStatus.ISSUED
+        assert session.scalar(select(func.count(Redemption.id))) == 1
+        assert session.scalars(select(Prize.stock).order_by(Prize.id)).all() == [2, -1]
+        assert session.scalar(select(RedemptionCode).where(RedemptionCode.code == code)).status is CodeStatus.REDEEMED
 
 
 def test_duplicate_item_rejected_without_writes() -> None:

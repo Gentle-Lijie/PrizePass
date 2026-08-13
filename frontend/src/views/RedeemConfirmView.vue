@@ -45,11 +45,11 @@ onMounted(async () => {
     <button class="text-sm text-blue-600" @click="router.back()">← 返回选择奖品</button>
     <h1 class="mt-4 text-3xl font-bold">确认兑换</h1>
     <form v-if="redemption.context" class="mt-6 grid gap-6" @submit.prevent="submit">
-      <section class="card"><h2 class="font-semibold">奖品明细</h2><div v-for="prize in selected" :key="prize.id" class="mt-4 flex justify-between border-t pt-4 text-sm"><span>{{ prize.name }} × {{ redemption.quantities[prize.id] }}</span><strong>{{ prize.redeem_value * redemption.quantities[prize.id]! }} 额度</strong></div><div class="mt-5 flex justify-between border-t pt-4"><strong>总消耗 {{ used }}</strong><span class="text-emerald-600">剩余 {{ remaining }}</span></div></section>
+      <section class="card"><h2 class="font-semibold">奖品明细</h2><div v-for="prize in selected" :key="prize.id" class="mt-4 flex flex-col gap-1 border-t pt-4 text-sm sm:flex-row sm:items-center sm:justify-between"><span class="break-words">{{ prize.name }} × {{ redemption.quantities[prize.id] }}</span><strong class="shrink-0">{{ prize.redeem_value * redemption.quantities[prize.id]! }} 额度</strong></div><div class="mt-5 flex flex-col gap-1 border-t pt-4 sm:flex-row sm:justify-between"><strong>总消耗 {{ used }}</strong><span class="text-emerald-600">剩余 {{ remaining }}</span></div></section>
       <section class="card"><h2 class="font-semibold">领取人信息</h2><div class="mt-4 grid gap-4"><label class="text-sm font-medium">姓名<input v-model="form.contact_name" class="field mt-1" maxlength="100" required /></label><label class="text-sm font-medium">手机号<input v-model="form.contact_phone" class="field mt-1" minlength="5" maxlength="30" pattern="[0-9+() -]{5,30}" required /></label><label class="text-sm font-medium">备注（可选）<textarea v-model="form.note" class="field mt-1" maxlength="500" rows="3" /></label></div></section>
       <section class="card bg-blue-50"><h2 class="font-semibold">自提信息</h2><p class="mt-2">{{ redemption.context.event.pickup_location }}</p><p class="mt-1 whitespace-pre-wrap text-sm text-slate-600">{{ redemption.context.event.pickup_instructions }}</p></section>
       <p v-if="error" class="rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ error }}</p>
-      <button class="btn-primary py-3" :disabled="busy">{{ busy ? '提交中…' : '确认并提交兑换' }}</button>
+      <button class="btn-primary sticky bottom-4 z-10 py-3 shadow-lg sm:static sm:shadow-none" :disabled="busy || remaining < 0">{{ busy ? '提交中…' : '确认并提交兑换' }}</button>
     </form>
   </main>
 </template>

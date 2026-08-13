@@ -94,7 +94,7 @@ class PrizeWrite(StrictModel):
     real_value: Annotated[int, Field(ge=0, le=4_294_967_295)]
     purchase_value: Annotated[int, Field(ge=0, le=4_294_967_295)] = 0
     redeem_value: Annotated[int, Field(gt=0, le=4_294_967_295)]
-    stock: Annotated[int, Field(ge=0, le=4_294_967_295)]
+    stock: Annotated[int, Field(ge=-9_223_372_036_854_775_808, le=9_223_372_036_854_775_807)]
     description: Annotated[str | None, Field(max_length=5000)] = None
 
     @field_validator("name")
