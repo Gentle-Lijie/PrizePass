@@ -133,7 +133,8 @@ export interface RedemptionSuccess {
   pickup_instructions: string
 }
 
-export type AdminRedemptionStatus = 'submitted' | 'ready' | 'picked_up' | 'cancelled'
+export type AdminRedemptionStatus =
+  'submitted' | 'ready' | 'picked_up' | 'cancelled'
 
 export interface AdminRedemption {
   id: number

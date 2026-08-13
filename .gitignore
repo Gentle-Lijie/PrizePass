@@ -13,5 +13,6 @@ dist/
 logs/
 .pytest_cache/
 .playwright-cli/
+.playwright-mcp/
 output/playwright/
 *.tsbuildinfo

@@ -1,7 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-import type { PublicPrize, RedemptionContext, RedemptionSuccess } from '@/api/types'
+import type {
+  PublicPrize,
+  RedemptionContext,
+  RedemptionSuccess,
+} from '@/api/types'
 
 export const useRedemptionStore = defineStore('redemption', () => {
   const context = ref<RedemptionContext | null>(null)

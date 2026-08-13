@@ -13,5 +13,10 @@ export const useAuthStore = defineStore('auth', () => {
     redemptionCode.value = ''
   }
 
-  return { adminPassword, redemptionCode, clearAdminPassword, clearRedemptionCode }
+  return {
+    adminPassword,
+    redemptionCode,
+    clearAdminPassword,
+    clearRedemptionCode,
+  }
 })
