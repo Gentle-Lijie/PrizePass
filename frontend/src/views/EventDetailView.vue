@@ -191,7 +191,7 @@ function openWinnerForm() {
 
 async function saveWinner() {
   const payload: WinnerCreate = {
-    external_id: winnerForm.external_id.trim() || null,
+    external_id: (winnerForm.external_id ?? '').trim() || null,
     name: winnerForm.name.trim(),
     email: winnerForm.email.trim(),
     quota: Number(winnerForm.quota),
