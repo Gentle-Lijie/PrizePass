@@ -10,9 +10,9 @@
         LayoutGrid,
         MapPin,
         Minus,
-        PackageCheck,
         Plus,
         ShieldCheck,
+        Sparkles,
         Ticket,
         Workflow,
     } from 'lucide-vue-next'
@@ -31,13 +31,13 @@
         },
         {
             icon: LayoutGrid,
-            title: '额度内自由组合',
-            desc: '在专属额度里挑喜欢的奖品、调整数量，凑满为止。',
+            title: '分类折叠挑选',
+            desc: '奖品按标签折叠分组展示，在专属额度里调整数量、自由组合。',
         },
         {
-            icon: PackageCheck,
-            title: '实时库存',
-            desc: '库存随大家的选择实时更新，选得到就能领到。',
+            icon: Sparkles,
+            title: '自定义奖品申请',
+            desc: '列表里没有想要的？填写名称、链接和期望价格提交申请，结果邮件通知，被拒后兑换码自动恢复。',
         },
         {
             icon: MapPin,
@@ -53,18 +53,18 @@
         },
         {
             icon: Gift,
-            title: '六字段奖品',
-            desc: '名称、图片、真实价、展示价、抵扣额度、库存，逐项可控。',
+            title: '灵活的奖品管理',
+            desc: '名称、价格、额度、库存之外，支持标签分组排序与一键上下架。',
         },
         {
             icon: FileSpreadsheet,
-            title: '批量导入',
-            desc: 'CSV / XLSX 原子导入奖品与获奖人，一行出错整批拒绝。',
+            title: '批量导入与批量操作',
+            desc: 'CSV / XLSX 原子导入；表格勾选即可批量改标签、调库存、删除。',
         },
         {
             icon: Workflow,
             title: '状态机流转',
-            desc: '提交 → 备货 → 已领取，取消即恢复库存与兑换码。',
+            desc: '提交 → 备货 → 已领取，取消即恢复库存；自定义奖品可采纳或附原因驳回。',
         },
     ]
 
@@ -128,7 +128,7 @@
         {
             n: '04',
             title: '获奖人自选提交',
-            desc: '凭码在额度内挑选奖品，一次提交确认。',
+            desc: '凭码在额度内挑选奖品，或提交自定义奖品申请。',
         },
         {
             n: '05',
@@ -211,7 +211,7 @@
                     <dl
                         class="mt-10 grid max-w-md grid-cols-3 gap-4 border-t border-slate-200 pt-6 dark:border-slate-700">
                         <div>
-                            <dt class="text-2xl font-bold text-ink">6</dt>
+                            <dt class="text-2xl font-bold text-ink">7</dt>
                             <dd class="mt-1 text-xs text-slate-500 dark:text-slate-400">
                                 种通知模板
                             </dd>
@@ -393,7 +393,7 @@
                     </h2>
                     <p class="mt-4 text-slate-600 dark:text-slate-300">
                         同时支持 SMTP 邮件、email-poster HTTP 转发与固定
-                        Webhook。兑换码发放、待领取、已提交、已领取、取消……每个场景都能单独选择走哪些渠道，发给获奖人还是运营邮箱。
+                        Webhook。兑换码发放、待领取、已提交、已领取、取消、自定义奖品申请与驳回……每个场景都能单独选择走哪些渠道，发给获奖人还是运营邮箱。
                     </p>
                     <ul class="mt-6 space-y-2.5 text-sm text-slate-700 dark:text-slate-300">
                         <li class="flex items-center gap-2">
@@ -419,6 +419,8 @@
                             { s: '奖品待领取', c: '邮件 · Webhook' },
                             { s: '兑换已提交', c: '运营邮箱 · Webhook' },
                             { s: '兑换已领取', c: '运营邮箱 · Webhook' },
+                            { s: '自定义奖品申请', c: '运营邮箱 · Webhook' },
+                            { s: '申请被驳回', c: '获奖人邮件' },
                         ]" :key="row.s" class="flex items-center justify-between rounded-xl bg-canvas px-4 py-3">
                             <span class="text-sm font-medium">{{ row.s }}</span>
                             <span class="text-xs text-slate-500 dark:text-slate-400">{{
