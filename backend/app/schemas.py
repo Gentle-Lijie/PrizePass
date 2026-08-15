@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
@@ -97,6 +97,7 @@ class PrizeWrite(StrictModel):
     stock: Annotated[int, Field(ge=-9_223_372_036_854_775_808, le=9_223_372_036_854_775_807)]
     description: Annotated[str | None, Field(max_length=5000)] = None
     tag: Annotated[str | None, Field(max_length=100)] = None
+    is_active: bool = True
 
     @field_validator("name")
     @classmethod
@@ -141,9 +142,28 @@ class PrizeRead(BaseModel):
     stock: int
     description: str | None
     tag: str | None
+    is_active: bool
     created_at: datetime
     updated_at: datetime
 
     @field_serializer("created_at", "updated_at")
     def serialize_datetimes(self, value: datetime) -> str:
         return utc_iso(value) or ""
+
+
+class PrizeBatchIds(StrictModel):
+    ids: Annotated[list[int], Field(min_length=1, max_length=10_000)]
+
+
+class PrizeBatchTag(PrizeBatchIds):
+    tag: Annotated[str | None, Field(max_length=100)] = None
+
+    @field_validator("tag")
+    @classmethod
+    def normalize_tag(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
+class PrizeBatchStock(PrizeBatchIds):
+    mode: Literal["delta", "set"]
+    value: Annotated[int, Field(ge=-9_223_372_036_854_775_808, le=9_223_372_036_854_775_807)]

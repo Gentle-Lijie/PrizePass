@@ -3,6 +3,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Enum,
     ForeignKey,
@@ -105,6 +106,8 @@ class Prize(Base):
     description: Mapped[str | None] = mapped_column(Text)
     # Free-text label used to group prizes into collapsible sections on the redemption page.
     tag: Mapped[str | None] = mapped_column(String(100))
+    # Off-shelf prizes stay visible to admins but are hidden from the redemption page.
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"))
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 

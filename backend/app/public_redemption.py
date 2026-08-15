@@ -131,7 +131,7 @@ def redemption_prizes(db: DbSession, code_value: Annotated[str, Depends(code_hea
     code, event, _ = usable_code(db, code_value)
     prizes = db.scalars(
         select(Prize)
-        .where(Prize.event_id == event.id)
+        .where(Prize.event_id == event.id, Prize.is_active == True)  # noqa: E712
         # Tagged prizes first ordered by tag text (numeric prefix controls section
         # order), untagged prizes fall into the trailing default section.
         .order_by(Prize.tag.is_(None), Prize.tag, Prize.id)

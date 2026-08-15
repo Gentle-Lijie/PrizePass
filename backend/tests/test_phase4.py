@@ -113,6 +113,42 @@ def test_public_prizes_order_by_tag_with_untagged_last() -> None:
     assert [prize["tag"] for prize in visible.json()] == ["1-数码", "2-生活", None]
 
 
+def test_public_prizes_hide_off_shelf_and_batch_delete_skips_referenced() -> None:
+    event_id, code, prizes = setup_redeemable(500, [("可兑换", 200, 2), ("将下架", 100, 2), ("将删除", 100, 2)])
+    redeemable, off_shelf, deletable = prizes
+    # Take one prize off-shelf: hidden from the public page, still in the admin list.
+    assert client.put(
+        f"/api/admin/prizes/{off_shelf}",
+        headers=ADMIN,
+        json={
+            "name": "将下架",
+            "image": "https://example.com/将下架.jpg",
+            "real_value": 10_000,
+            "redeem_value": 100,
+            "stock": 2,
+            "description": None,
+            "is_active": False,
+        },
+    ).status_code == 200
+    visible = client.get("/api/public/redemption/prizes", headers={"X-Redemption-Code": code})
+    assert visible.status_code == 200
+    assert [prize["id"] for prize in visible.json()] == [redeemable, deletable]
+
+    # Reference one prize through a redemption, then batch-delete both.
+    response = submit(code, [{"prize_id": redeemable, "quantity": 1}])
+    assert response.status_code == 201, response.text
+    result = client.post(
+        f"/api/admin/events/{event_id}/prizes/batch-delete",
+        headers=ADMIN,
+        json={"ids": [redeemable, deletable]},
+    )
+    assert result.status_code == 200, result.text
+    assert result.json() == {
+        "deleted": 1,
+        "skipped": [{"id": redeemable, "name": "可兑换"}],
+    }
+
+
 def test_multi_prize_redemption_is_atomic_and_snapshotted() -> None:
     _, code, prizes = setup_redeemable(500, [("奖品甲", 200, 2), ("奖品乙", 100, 3)])
     response = submit(code, [{"prize_id": prizes[0], "quantity": 1}, {"prize_id": prizes[1], "quantity": 2}])

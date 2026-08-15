@@ -37,6 +37,7 @@ export interface PrizeRecord {
   stock: number
   description: string | null
   tag: string | null
+  is_active: boolean
   created_at: string
   updated_at: string
 }
@@ -51,6 +52,25 @@ export interface PrizeWrite {
   stock: number
   description: string | null
   tag: string | null
+  is_active: boolean
+}
+
+export interface PrizeBatchIds {
+  ids: number[]
+}
+
+export interface PrizeBatchTag extends PrizeBatchIds {
+  tag: string | null
+}
+
+export interface PrizeBatchStock extends PrizeBatchIds {
+  mode: 'delta' | 'set'
+  value: number
+}
+
+export interface PrizeBatchDeleteResult {
+  deleted: number
+  skipped: Array<{ id: number; name: string }>
 }
 
 export interface ImportError {

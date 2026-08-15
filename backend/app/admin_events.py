@@ -13,7 +13,15 @@ from .config import get_settings
 from .database import get_db
 from .http import fail
 from .models import Event, EventStatus, Prize, Redemption, RedemptionItem, RedemptionStatus, Winner
-from .schemas import EventRead, EventWrite, PrizeRead, PrizeWrite
+from .schemas import (
+    EventRead,
+    EventWrite,
+    PrizeBatchStock,
+    PrizeBatchTag,
+    PrizeBatchIds,
+    PrizeRead,
+    PrizeWrite,
+)
 from .spreadsheets import (
     MAX_FILE_SIZE,
     PRIZE_HEADERS,
@@ -119,7 +127,13 @@ def update_event(event_id: int, payload: EventWrite, db: DbSession) -> EventRead
 @router.get("/events/{event_id}/prizes", response_model=list[PrizeRead])
 def list_prizes(event_id: int, db: DbSession) -> list[Prize]:
     get_event_or_404(db, event_id)
-    return list(db.scalars(select(Prize).where(Prize.event_id == event_id).order_by(Prize.id)).all())
+    return list(
+        db.scalars(
+            select(Prize)
+            .where(Prize.event_id == event_id)
+            .order_by(Prize.tag.is_(None), Prize.tag, Prize.id)
+        ).all()
+    )
 
 
 @router.get("/events/{event_id}/prizes/summary")
@@ -224,6 +238,69 @@ def delete_prize(prize_id: int, db: DbSession) -> Response:
     db.commit()
     maybe_remove_unreferenced_local_image(db, image, prize_id)
     return Response(status_code=204)
+
+
+STOCK_MIN = -9_223_372_036_854_775_808
+STOCK_MAX = 9_223_372_036_854_775_807
+
+
+def batch_prizes(db: Session, event_id: int, payload: PrizeBatchIds) -> list[Prize]:
+    get_event_or_404(db, event_id)
+    return list(
+        db.scalars(
+            select(Prize).where(Prize.event_id == event_id, Prize.id.in_(payload.ids))
+        ).all()
+    )
+
+
+@router.post("/events/{event_id}/prizes/batch-tag")
+def batch_set_prize_tag(event_id: int, payload: PrizeBatchTag, db: DbSession) -> dict:
+    prizes = batch_prizes(db, event_id, payload)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for prize in prizes:
+        prize.tag = payload.tag
+        prize.updated_at = now
+    db.commit()
+    return {"updated": len(prizes)}
+
+
+@router.post("/events/{event_id}/prizes/batch-stock")
+def batch_adjust_prize_stock(event_id: int, payload: PrizeBatchStock, db: DbSession) -> dict:
+    prizes = batch_prizes(db, event_id, payload)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for prize in prizes:
+        stock = prize.stock + payload.value if payload.mode == "delta" else payload.value
+        if not STOCK_MIN <= stock <= STOCK_MAX:
+            fail(422, "stock_out_of_range", f"奖品“{prize.name}”的库存将超出允许范围")
+        prize.stock = stock
+        prize.updated_at = now
+    db.commit()
+    return {"updated": len(prizes)}
+
+
+@router.post("/events/{event_id}/prizes/batch-delete")
+def batch_delete_prizes(event_id: int, payload: PrizeBatchIds, db: DbSession) -> dict:
+    prizes = batch_prizes(db, event_id, payload)
+    referenced_ids = set(
+        db.scalars(
+            select(RedemptionItem.prize_id).where(RedemptionItem.prize_id.in_(payload.ids))
+        ).all()
+    )
+    deletable = []
+    skipped = []
+    for prize in prizes:
+        if prize.id in referenced_ids:
+            skipped.append({"id": prize.id, "name": prize.name})
+        else:
+            deletable.append(prize)
+    images = [prize.image for prize in deletable]
+    ids = [prize.id for prize in deletable]
+    for prize in deletable:
+        db.delete(prize)
+    db.commit()
+    for image, prize_id in zip(images, ids):
+        maybe_remove_unreferenced_local_image(db, image, prize_id)
+    return {"deleted": len(deletable), "skipped": skipped}
 
 
 @router.post("/uploads/prize-image", status_code=201)
@@ -344,7 +421,13 @@ async def confirm_prize_import(event_id: int, db: DbSession, file: Annotated[Upl
 
 @router.get("/events/{event_id}/prizes/export")
 def export_prizes(event_id: int, db: DbSession, format: str = Query(pattern="^(csv|xlsx)$")) -> Response:
-    prizes = list(db.scalars(select(Prize).where(Prize.event_id == event_id).order_by(Prize.id)).all())
+    prizes = list(
+        db.scalars(
+            select(Prize)
+            .where(Prize.event_id == event_id)
+            .order_by(Prize.tag.is_(None), Prize.tag, Prize.id)
+        ).all()
+    )
     get_event_or_404(db, event_id)
     rows = [
         [

@@ -171,6 +171,111 @@ def test_csv_import_is_atomic_and_export_has_money_format() -> None:
         assert session.scalar(select(func.count(Prize.id)).where(Prize.event_id == event_id)) == 2
 
 
+def test_prize_is_active_and_admin_list_orders_by_tag() -> None:
+    event_id = create_event()
+    for name, tag in (("生活", "2-生活"), ("数码", "1-数码"), ("默认", None)):
+        response = client.post(
+            f"/api/admin/events/{event_id}/prizes",
+            headers=ADMIN,
+            json={**prize_payload(), "name": name, "tag": tag},
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["is_active"] is True
+
+    listed = client.get(f"/api/admin/events/{event_id}/prizes", headers=ADMIN).json()
+    assert [(prize["tag"], prize["is_active"]) for prize in listed] == [
+        ("1-数码", True),
+        ("2-生活", True),
+        (None, True),
+    ]
+
+    # Off-shelf prizes stay visible to admins but are hidden from the public page.
+    off_shelf = {**prize_payload(), "name": "下架奖品", "is_active": False}
+    assert client.post(f"/api/admin/events/{event_id}/prizes", headers=ADMIN, json=off_shelf).status_code == 201
+    listed = client.get(f"/api/admin/events/{event_id}/prizes", headers=ADMIN).json()
+    assert listed[-1]["is_active"] is False
+
+
+def test_prize_batch_tag_and_stock_and_delete() -> None:
+    event_id = create_event()
+    ids = []
+    for name in ("甲", "乙", "丙"):
+        response = client.post(
+            f"/api/admin/events/{event_id}/prizes",
+            headers=ADMIN,
+            json={**prize_payload(), "name": name, "stock": 10},
+        )
+        assert response.status_code == 201, response.text
+        ids.append(response.json()["id"])
+
+    assert client.post(
+        f"/api/admin/events/{event_id}/prizes/batch-tag",
+        headers=ADMIN,
+        json={"ids": ids[:2], "tag": " 1-数码 "},
+    ).json() == {"updated": 2}
+    listed = client.get(f"/api/admin/events/{event_id}/prizes", headers=ADMIN).json()
+    by_id = {prize["id"]: prize for prize in listed}
+    assert [by_id[prize_id]["tag"] for prize_id in ids] == ["1-数码", "1-数码", None]
+
+    assert client.post(
+        f"/api/admin/events/{event_id}/prizes/batch-tag",
+        headers=ADMIN,
+        json={"ids": ids[:2], "tag": None},
+    ).json() == {"updated": 2}
+    listed = client.get(f"/api/admin/events/{event_id}/prizes", headers=ADMIN).json()
+    assert all(prize["tag"] is None for prize in listed)
+
+    assert client.post(
+        f"/api/admin/events/{event_id}/prizes/batch-tag",
+        headers=ADMIN,
+        json={"ids": [], "tag": "x"},
+    ).status_code == 422
+
+    assert client.post(
+        f"/api/admin/events/{event_id}/prizes/batch-stock",
+        headers=ADMIN,
+        json={"ids": ids, "mode": "delta", "value": 5},
+    ).json() == {"updated": 3}
+    assert client.post(
+        f"/api/admin/events/{event_id}/prizes/batch-stock",
+        headers=ADMIN,
+        json={"ids": ids[:2], "mode": "delta", "value": -3},
+    ).json() == {"updated": 2}
+    listed = client.get(f"/api/admin/events/{event_id}/prizes", headers=ADMIN).json()
+    by_id = {prize["id"]: prize for prize in listed}
+    assert [by_id[prize_id]["stock"] for prize_id in ids] == [12, 12, 15]
+
+    assert client.post(
+        f"/api/admin/events/{event_id}/prizes/batch-stock",
+        headers=ADMIN,
+        json={"ids": ids[:1], "mode": "set", "value": 2},
+    ).json() == {"updated": 1}
+    # The max itself is in range; stepping past it in either direction must fail.
+    assert client.post(
+        f"/api/admin/events/{event_id}/prizes/batch-stock",
+        headers=ADMIN,
+        json={"ids": ids[:1], "mode": "set", "value": 9_223_372_036_854_775_807},
+    ).json() == {"updated": 1}
+    assert client.post(
+        f"/api/admin/events/{event_id}/prizes/batch-stock",
+        headers=ADMIN,
+        json={"ids": ids[:1], "mode": "delta", "value": 1},
+    ).status_code == 422
+    assert client.post(
+        f"/api/admin/events/{event_id}/prizes/batch-stock",
+        headers=ADMIN,
+        json={"ids": ids[:1], "mode": "set", "value": -9_223_372_036_854_775_809},
+    ).status_code == 422
+
+    assert client.post(
+        f"/api/admin/events/{event_id}/prizes/batch-delete",
+        headers=ADMIN,
+        json={"ids": ids[:2]},
+    ).json() == {"deleted": 2, "skipped": []}
+    with Session(test_engine) as session:
+        assert session.scalar(select(func.count(Prize.id)).where(Prize.event_id == event_id)) == 1
+
+
 def test_csv_import_with_tag_column() -> None:
     event_id = create_event()
     stream = io.StringIO(newline="")
