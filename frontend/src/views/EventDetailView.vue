@@ -76,6 +76,7 @@ const prizeForm = reactive({
   redeem_value: 1,
   stock: 0,
   description: '',
+  tag: '',
 })
 
 const allowedStatuses = computed<EventStatus[]>(() => {
@@ -165,6 +166,7 @@ function openPrize(prize?: PrizeRecord) {
           redeem_value: prize.redeem_value,
           stock: prize.stock,
           description: prize.description ?? '',
+          tag: prize.tag ?? '',
         }
       : {
           name: '',
@@ -175,6 +177,7 @@ function openPrize(prize?: PrizeRecord) {
           redeem_value: 1,
           stock: 0,
           description: '',
+          tag: '',
         },
   )
   imageMode.value = prize?.image.startsWith('/uploads/') ? 'upload' : 'url'
@@ -209,6 +212,7 @@ async function savePrize() {
     redeem_value: Number(prizeForm.redeem_value),
     stock: Number(prizeForm.stock),
     description: prizeForm.description || null,
+    tag: prizeForm.tag.trim() || null,
   }
   busy.value = true
   error.value = ''
@@ -824,6 +828,11 @@ onMounted(load)
                   />
                   <div>
                     <strong>{{ prize.name }}</strong>
+                    <span
+                      v-if="prize.tag"
+                      class="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-600 dark:bg-blue-950/40 dark:text-blue-300"
+                      >{{ prize.tag }}</span
+                    >
                     <p
                       class="max-w-xs truncate text-xs text-slate-500 dark:text-slate-400"
                     >
@@ -1344,6 +1353,17 @@ onMounted(load)
             /><span
               class="mt-1 block text-xs font-normal text-slate-500 dark:text-slate-400"
               >填写后，用户选择奖品时可跳转查看商品详情</span
+            ></label
+          >
+          <label class="text-sm font-medium"
+            >标签（选填）<input
+              v-model="prizeForm.tag"
+              class="field mt-1"
+              maxlength="100"
+              placeholder="如 1-数码、2-生活"
+            /><span
+              class="mt-1 block text-xs font-normal text-slate-500 dark:text-slate-400"
+              >用于兑换页按标签折叠分组展示，标签按文字排序（可用数字前缀控制顺序），留空归入默认组</span
             ></label
           >
           <div class="grid grid-cols-2 gap-3 md:grid-cols-4">

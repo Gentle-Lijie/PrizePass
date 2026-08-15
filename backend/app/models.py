@@ -103,6 +103,8 @@ class Prize(Base):
     # Signed so accepted redemptions can create a back-order when demand exceeds stock.
     stock: Mapped[int] = mapped_column(BigInteger, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    # Free-text label used to group prizes into collapsible sections on the redemption page.
+    tag: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 

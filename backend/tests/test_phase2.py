@@ -78,6 +78,25 @@ def test_prize_rejects_extra_fields_and_non_https_image() -> None:
     assert client.post(f"/api/admin/events/{event_id}/prizes", headers=ADMIN, json=bad).status_code == 422
 
 
+def test_prize_tag_roundtrip_and_normalization() -> None:
+    event_id = create_event()
+    created = client.post(
+        f"/api/admin/events/{event_id}/prizes",
+        headers=ADMIN,
+        json={**prize_payload(), "tag": " 1-数码 "},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["tag"] == "1-数码"
+
+    blank = client.post(
+        f"/api/admin/events/{event_id}/prizes",
+        headers=ADMIN,
+        json={**prize_payload(), "name": "无标签奖品", "tag": "   "},
+    )
+    assert blank.status_code == 201, blank.text
+    assert blank.json()["tag"] is None
+
+
 def test_image_upload_checks_file_content() -> None:
     image_data = io.BytesIO()
     Image.new("RGB", (4, 4), "red").save(image_data, format="PNG")
@@ -150,6 +169,26 @@ def test_csv_import_is_atomic_and_export_has_money_format() -> None:
     assert response.status_code == 422
     with Session(test_engine) as session:
         assert session.scalar(select(func.count(Prize.id)).where(Prize.event_id == event_id)) == 2
+
+
+def test_csv_import_with_tag_column() -> None:
+    event_id = create_event()
+    stream = io.StringIO(newline="")
+    writer = csv.writer(stream)
+    writer.writerow(
+        ["name", "image", "real_value", "purchase_value", "redeem_value", "stock", "description", "jd_url", "tag"]
+    )
+    writer.writerow(["保温杯", "https://example.com/cup.jpg", "199.00", "199.00", 150, 20, "黑色", "", "1-数码"])
+    writer.writerow(["背包", "https://example.com/bag.jpg", "299.90", "299.90", 250, 10, "蓝色", "", ""])
+    content = stream.getvalue().encode("utf-8")
+    response = client.post(
+        f"/api/admin/events/{event_id}/prizes/import/confirm",
+        headers=ADMIN,
+        files={"file": ("prizes.csv", content, "text/csv")},
+    )
+    assert response.status_code == 201, response.text
+    prizes = client.get(f"/api/admin/events/{event_id}/prizes", headers=ADMIN).json()
+    assert [prize["tag"] for prize in prizes] == ["1-数码", None]
 
 
 def test_xlsx_import_and_export_match_csv() -> None:

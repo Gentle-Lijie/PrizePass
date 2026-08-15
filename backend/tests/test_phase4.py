@@ -89,6 +89,30 @@ def test_public_endpoints_require_header_and_filter_prizes() -> None:
     assert "set-cookie" not in visible.headers
 
 
+def test_public_prizes_order_by_tag_with_untagged_last() -> None:
+    specs = [("生活", 100, 1), ("数码", 100, 1), ("默认", 100, 1)]
+    _, code, prizes = setup_redeemable(500, specs)
+    tags = {"生活": "2-生活", "数码": "1-数码", "默认": None}
+    for prize_id, (name, redeem_value, stock) in zip(prizes, specs):
+        response = client.put(
+            f"/api/admin/prizes/{prize_id}",
+            headers=ADMIN,
+            json={
+                "name": name,
+                "image": f"https://example.com/{name}.jpg",
+                "real_value": redeem_value * 100,
+                "redeem_value": redeem_value,
+                "stock": stock,
+                "description": None,
+                "tag": tags[name],
+            },
+        )
+        assert response.status_code == 200, response.text
+    visible = client.get("/api/public/redemption/prizes", headers={"X-Redemption-Code": code})
+    assert visible.status_code == 200
+    assert [prize["tag"] for prize in visible.json()] == ["1-数码", "2-生活", None]
+
+
 def test_multi_prize_redemption_is_atomic_and_snapshotted() -> None:
     _, code, prizes = setup_redeemable(500, [("奖品甲", 200, 2), ("奖品乙", 100, 3)])
     response = submit(code, [{"prize_id": prizes[0], "quantity": 1}, {"prize_id": prizes[1], "quantity": 2}])

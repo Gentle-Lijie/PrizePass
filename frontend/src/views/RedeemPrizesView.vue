@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import {
+  CollapsibleContent,
+  CollapsibleRoot,
+  CollapsibleTrigger,
+} from 'reka-ui'
 
 import { api } from '@/api/client'
 import type { PublicPrize, RedemptionContext } from '@/api/types'
@@ -26,6 +31,38 @@ const itemCount = computed(() =>
     0,
   ),
 )
+// Prizes arrive sorted by tag (untagged last); group consecutive prizes so each
+// tag becomes one collapsible section and untagged prizes form the plain tail.
+const groups = computed(() => {
+  const result: Array<{ tag: string | null; prizes: PublicPrize[] }> = []
+  for (const prize of redemption.prizes) {
+    const last = result[result.length - 1]
+    if (last && last.tag === prize.tag) last.prizes.push(prize)
+    else result.push({ tag: prize.tag, prizes: [prize] })
+  }
+  return result
+})
+// Collapse state keyed by tag; sections start expanded.
+const openGroups = reactive<Record<string, boolean>>({})
+function groupKey(tag: string | null) {
+  return tag ?? ''
+}
+watch(groups, (next) => {
+  for (const group of next)
+    if (!(groupKey(group.tag) in openGroups))
+      openGroups[groupKey(group.tag)] = true
+})
+const allCollapsed = computed(
+  () =>
+    groups.value.length > 0 &&
+    groups.value.every((group) => !openGroups[groupKey(group.tag)]),
+)
+function toggleAllGroups() {
+  // When everything is collapsed, expand all; otherwise collapse all.
+  const next = allCollapsed.value
+  for (const group of groups.value)
+    openGroups[groupKey(group.tag)] = next
+}
 
 function money(cents: number) {
   return `¥${(cents / 100).toFixed(2)}`
@@ -117,14 +154,56 @@ onMounted(load)
       <p v-if="error" class="mt-4 text-sm text-red-600 dark:text-red-400">
         {{ error }}
       </p>
-      <section
-        class="mt-6 grid gap-3 sm:mt-8 sm:gap-5 sm:grid-cols-2 lg:grid-cols-3"
-      >
-        <article
-          v-for="prize in redemption.prizes"
-          :key="prize.id"
-          class="card overflow-hidden p-0"
+      <div v-if="redemption.prizes.length === 0" class="card mt-6 text-center text-slate-500 sm:mt-8 dark:text-slate-400">
+        当前没有可兑换的奖品
+      </div>
+      <div v-else class="mt-6 space-y-4 sm:mt-8 sm:space-y-5">
+        <div class="flex justify-end">
+          <button
+            type="button"
+            class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            @click="toggleAllGroups"
+          >
+            {{ allCollapsed ? '全部展开' : '全部折叠' }}
+          </button>
+        </div>
+        <CollapsibleRoot
+          v-for="group in groups"
+          :key="group.tag ?? '__untagged__'"
+          v-model:open="openGroups[groupKey(group.tag)]"
         >
+          <CollapsibleTrigger
+            class="card flex w-full items-center justify-between gap-3 p-4 text-left"
+          >
+            <span class="flex items-baseline gap-2">
+              <strong class="text-lg">{{ group.tag ?? '其他' }}</strong>
+              <span class="text-xs text-slate-500 dark:text-slate-400"
+                >{{ group.prizes.length }} 件奖品</span
+              >
+            </span>
+            <svg
+              class="h-5 w-5 shrink-0 text-slate-400 transition-transform"
+              :class="openGroups[groupKey(group.tag)] ? 'rotate-180' : ''"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M5.22 7.22a.75.75 0 0 1 1.06 0L10 10.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.28a.75.75 0 0 1 0-1.06Z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <section
+              class="mt-3 grid gap-3 sm:mt-4 sm:gap-5 sm:grid-cols-2 lg:grid-cols-3"
+            >
+              <article
+                v-for="prize in group.prizes"
+                :key="prize.id"
+                class="card overflow-hidden p-0"
+              >
           <img
             :src="prize.image"
             :alt="prize.name"
@@ -178,13 +257,10 @@ onMounted(load)
             </div>
           </div>
         </article>
-        <div
-          v-if="redemption.prizes.length === 0"
-          class="card col-span-full text-center text-slate-500 dark:text-slate-400"
-        >
-          当前没有可兑换的奖品
-        </div>
-      </section>
+            </section>
+          </CollapsibleContent>
+        </CollapsibleRoot>
+      </div>
       <div
         class="pointer-events-none fixed inset-x-0 bottom-0 z-10 h-36 bg-gradient-to-t from-canvas via-canvas/90 to-transparent backdrop-blur-[3px] sm:hidden"
         style="

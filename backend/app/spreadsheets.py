@@ -10,7 +10,7 @@ from openpyxl import Workbook, load_workbook
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 MAX_ROWS = 10_000
-PRIZE_HEADERS = ["name", "image", "real_value", "purchase_value", "redeem_value", "stock", "description", "jd_url"]
+PRIZE_HEADERS = ["name", "image", "real_value", "purchase_value", "redeem_value", "stock", "description", "jd_url", "tag"]
 INTEGER_RE = re.compile(r"^(0|[1-9]\d*)$")
 MONEY_RE = re.compile(r"^(0|[1-9]\d*)(?:\.(\d{1,2}))?$")
 

@@ -36,6 +36,7 @@ export interface PrizeRecord {
   redeem_value: number
   stock: number
   description: string | null
+  tag: string | null
   created_at: string
   updated_at: string
 }
@@ -49,6 +50,7 @@ export interface PrizeWrite {
   redeem_value: number
   stock: number
   description: string | null
+  tag: string | null
 }
 
 export interface ImportError {
@@ -121,6 +123,7 @@ export interface PublicPrize {
   purchase_value: number
   redeem_value: number
   description: string | null
+  tag: string | null
 }
 
 export interface RedemptionSuccess {

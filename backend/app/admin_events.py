@@ -259,7 +259,8 @@ def validate_prize_table(filename: str, content: bytes) -> dict:
     normalized: list[dict] = []
     legacy_headers = ["name", "image", "real_value", "redeem_value", "stock", "description"]
     purchase_headers = ["name", "image", "real_value", "purchase_value", "redeem_value", "stock", "description"]
-    if table.headers not in (PRIZE_HEADERS, purchase_headers, legacy_headers):
+    # PRIZE_HEADERS[:-1] is the pre-tag header set, kept accepted for backward compatibility.
+    if table.headers not in (PRIZE_HEADERS, PRIZE_HEADERS[:-1], purchase_headers, legacy_headers):
         return {
             "valid": False,
             "rows": [],
@@ -280,6 +281,7 @@ def validate_prize_table(filename: str, content: bytes) -> dict:
             "redeem_value": lambda value: parse_positive_integer(value, "抵扣价值"),
             "stock": lambda value: parse_nonnegative_integer(value, "库存"),
             "description": lambda value: str(value).strip() if value is not None else "",
+            "tag": lambda value: str(value).strip() if value is not None else "",
         }
         for column, parser in field_parsers.items():
             try:
@@ -354,6 +356,7 @@ def export_prizes(event_id: int, db: DbSession, format: str = Query(pattern="^(c
             prize.stock,
             prize.description or "",
             prize.jd_url or "",
+            prize.tag or "",
         ]
         for prize in prizes
     ]

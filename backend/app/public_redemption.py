@@ -132,7 +132,9 @@ def redemption_prizes(db: DbSession, code_value: Annotated[str, Depends(code_hea
     prizes = db.scalars(
         select(Prize)
         .where(Prize.event_id == event.id)
-        .order_by(Prize.id)
+        # Tagged prizes first ordered by tag text (numeric prefix controls section
+        # order), untagged prizes fall into the trailing default section.
+        .order_by(Prize.tag.is_(None), Prize.tag, Prize.id)
     ).all()
     return [
         {
@@ -143,6 +145,7 @@ def redemption_prizes(db: DbSession, code_value: Annotated[str, Depends(code_hea
             "purchase_value": prize.purchase_value,
             "redeem_value": prize.redeem_value,
             "description": prize.description,
+            "tag": prize.tag,
         }
         for prize in prizes
     ]

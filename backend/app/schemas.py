@@ -96,6 +96,7 @@ class PrizeWrite(StrictModel):
     redeem_value: Annotated[int, Field(gt=0, le=4_294_967_295)]
     stock: Annotated[int, Field(ge=-9_223_372_036_854_775_808, le=9_223_372_036_854_775_807)]
     description: Annotated[str | None, Field(max_length=5000)] = None
+    tag: Annotated[str | None, Field(max_length=100)] = None
 
     @field_validator("name")
     @classmethod
@@ -120,6 +121,11 @@ class PrizeWrite(StrictModel):
     def normalize_description(cls, value: str | None) -> str | None:
         return value.strip() or None if value is not None else None
 
+    @field_validator("tag")
+    @classmethod
+    def normalize_tag(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
 
 class PrizeRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -134,6 +140,7 @@ class PrizeRead(BaseModel):
     redeem_value: int
     stock: int
     description: str | None
+    tag: str | None
     created_at: datetime
     updated_at: datetime
 
