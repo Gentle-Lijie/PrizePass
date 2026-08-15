@@ -109,6 +109,24 @@
         demoSubmitted.value = false
     }
 
+    /* ---------------- 自定义申请演示（纯 UI，无提交逻辑） ---------------- */
+    const demoCustom = ref(false)
+    const demoWishSubmitted = ref(false)
+    const customDemo = ref({ name: '', url: '', price: '' })
+
+    function openCustomDemo() {
+        demoCustom.value = true
+    }
+    function backToList() {
+        demoCustom.value = false
+        demoWishSubmitted.value = false
+        customDemo.value = { name: '', url: '', price: '' }
+    }
+    function submitWishDemo() {
+        if (!customDemo.value.name.trim()) customDemo.value.name = '小米手环 9'
+        demoWishSubmitted.value = true
+    }
+
     const steps = [
         {
             n: '01',
@@ -190,7 +208,7 @@
         <!-- Hero -->
         <section
             class="bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900">
-            <div class="mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-2 lg:py-28">
+            <div class="mx-auto grid max-w-6xl items-center gap-10 px-4 py-12 sm:px-6 sm:py-20 lg:grid-cols-2 lg:py-20">
                 <div v-reveal>
                     <p class="text-sm font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">
                         PrizePass
@@ -233,7 +251,7 @@
 
                 <!-- 额度兑换演示卡 -->
                 <div v-reveal
-                    class="flex h-[65vh] flex-col rounded-2xl bg-slate-950 p-5 text-white shadow-xl ring-1 ring-white/10 sm:p-6">
+                    class="flex h-[70vh] flex-col rounded-2xl bg-slate-950 p-5 text-white shadow-xl ring-1 ring-white/10 sm:p-6">
                     <div class="flex items-center justify-between">
                         <p class="text-sm font-semibold uppercase tracking-[0.18em] text-blue-400">
                             体验兑换
@@ -258,53 +276,128 @@
                         </div>
 
                         <div v-else>
-                            <div class="flex items-end justify-between text-sm">
-                                <span class="text-slate-400">已用额度</span>
-                                <span class="font-mono"><span class="text-lg font-bold text-white">{{ used
-                                        }}</span><span class="text-slate-500"> / {{ QUOTA }}</span></span>
+                            <!-- 自定义申请提交成功态（演示） -->
+                            <div v-if="demoWishSubmitted" class="grid h-full place-items-center">
+                                <div class="text-center">
+                                    <Sparkles class="mx-auto h-12 w-12 text-blue-400" />
+                                    <h3 class="mt-5 text-xl font-semibold text-white">
+                                        申请已提交
+                                    </h3>
+                                    <p class="mt-2 text-sm text-slate-400">
+                                        等待管理员确认，采纳或驳回都会邮件通知你
+                                    </p>
+                                    <button type="button"
+                                        class="mt-8 rounded-xl bg-white px-8 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
+                                        @click="backToList">
+                                        确定
+                                    </button>
+                                </div>
                             </div>
-                            <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
-                                <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-400 transition-all duration-300"
-                                    :style="{ width: `${progress}%` }" />
-                            </div>
-                            <p class="mt-2 text-right text-xs text-slate-500">
-                                剩余 {{ remaining }}
-                            </p>
-                            <ul class="mt-5 space-y-2">
-                                <li v-for="p in demoPrizes" :key="p.id"
-                                    class="flex items-center gap-3 rounded-xl bg-slate-900 p-3">
-                                    <span
-                                        class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-800 text-lg">{{
-                                            p.emoji }}</span>
-                                    <div class="min-w-0 flex-1">
-                                        <p class="truncate text-sm font-medium">{{ p.name }}</p>
-                                        <p class="text-xs text-slate-500">抵扣 {{ p.value }}</p>
-                                    </div>
-                                    <div class="flex items-center gap-1.5">
-                                        <button
-                                            class="grid h-7 w-7 place-items-center rounded-md bg-slate-800 text-slate-300 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-30"
-                                            :disabled="!cart[p.id]" aria-label="减少" @click="sub(p)">
-                                            <Minus class="h-3.5 w-3.5" />
-                                        </button>
-                                        <span class="w-5 text-center font-mono text-sm">{{
-                                            cart[p.id] ?? 0
-                                            }}</span>
-                                        <button
-                                            class="grid h-7 w-7 place-items-center rounded-md bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-30"
-                                            :disabled="remaining < p.value" aria-label="增加" @click="add(p)">
-                                            <Plus class="h-3.5 w-3.5" />
-                                        </button>
-                                    </div>
-                                </li>
-                            </ul>
 
-                            <form class="mt-5" @submit.prevent="submitDemo">
-                                <button type="submit"
-                                    class="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100">
-                                    提交体验选择
-                                    <ArrowRight class="h-4 w-4" />
-                                </button>
+                            <!-- 自定义申请表单（演示，无提交逻辑） -->
+                            <form v-else-if="demoCustom" class="flex h-full flex-col" @submit.prevent="submitWishDemo">
+                                <p class="text-sm text-slate-400">
+                                    没有想要的？自己填一个。
+                                </p>
+                                <div class="mt-4 grid gap-3">
+                                    <input v-model="customDemo.name"
+                                        class="w-full rounded-xl bg-slate-900 px-3.5 py-2.5 text-sm text-white outline-none ring-1 ring-slate-700 placeholder:text-slate-500 focus:ring-blue-500"
+                                        maxlength="200" placeholder="奖品名称，如 小米手环 9" />
+                                    <input v-model="customDemo.url"
+                                        class="w-full rounded-xl bg-slate-900 px-3.5 py-2.5 text-sm text-white outline-none ring-1 ring-slate-700 placeholder:text-slate-500 focus:ring-blue-500"
+                                        maxlength="2000" placeholder="商品链接（选填）" />
+                                    <input v-model="customDemo.price"
+                                        class="w-full rounded-xl bg-slate-900 px-3.5 py-2.5 text-sm text-white outline-none ring-1 ring-slate-700 placeholder:text-slate-500 focus:ring-blue-500"
+                                        inputmode="decimal" placeholder="期望价格（元，选填）" />
+                                </div>
+                                <p class="mt-3 text-xs text-amber-400/90">
+                                    提交前会确认是否可以开票；被拒绝时兑换码自动恢复。
+                                </p>
+                                <div class="mt-auto flex flex-col gap-2 pt-5 sm:flex-row">
+                                    <button type="button"
+                                        class="flex-1 rounded-xl border border-slate-700 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
+                                        @click="backToList">
+                                        返回列表
+                                    </button>
+                                    <button type="submit"
+                                        class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100">
+                                        提交体验申请
+                                        <ArrowRight class="h-4 w-4" />
+                                    </button>
+                                </div>
                             </form>
+
+                            <!-- 默认奖品列表 -->
+                            <template v-else>
+                                <div class="flex items-end justify-between text-sm">
+                                    <span class="text-slate-400">已用额度</span>
+                                    <span class="font-mono"><span class="text-lg font-bold text-white">{{ used
+                                            }}</span><span class="text-slate-500"> / {{ QUOTA }}</span></span>
+                                </div>
+                                <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
+                                    <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-400 transition-all duration-300"
+                                        :style="{ width: `${progress}%` }" />
+                                </div>
+                                <p class="mt-2 text-right text-xs text-slate-500">
+                                    剩余 {{ remaining }}
+                                </p>
+                                <ul class="mt-5 space-y-2">
+                                    <li v-for="p in demoPrizes" :key="p.id"
+                                        class="flex items-center gap-3 rounded-xl bg-slate-900 p-3">
+                                        <span
+                                            class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-800 text-lg">{{
+                                                p.emoji }}</span>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="truncate text-sm font-medium">{{ p.name }}</p>
+                                            <p class="text-xs text-slate-500">抵扣 {{ p.value }}</p>
+                                        </div>
+                                        <div class="flex items-center gap-1.5">
+                                            <button
+                                                class="grid h-7 w-7 place-items-center rounded-md bg-slate-800 text-slate-300 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-30"
+                                                :disabled="!cart[p.id]" aria-label="减少" @click="sub(p)">
+                                                <Minus class="h-3.5 w-3.5" />
+                                            </button>
+                                            <span class="w-5 text-center font-mono text-sm">{{
+                                                cart[p.id] ?? 0
+
+
+
+
+
+
+
+
+
+
+
+
+                                            }}</span>
+                                            <button
+                                                class="grid h-7 w-7 place-items-center rounded-md bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-30"
+                                                :disabled="remaining < p.value" aria-label="增加" @click="add(p)">
+                                                <Plus class="h-3.5 w-3.5" />
+                                            </button>
+                                        </div>
+                                    </li>
+                                </ul>
+
+
+
+                                <button type="button"
+                                    class="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-700 py-2.5 text-sm font-medium text-slate-400 transition hover:border-blue-500/60 hover:text-blue-300"
+                                    @click="openCustomDemo">
+                                    <Sparkles class="h-4 w-4" />
+                                    没有想要的？填写自定义奖品
+                                </button>
+                                <form class="mt-5" @submit.prevent="submitDemo">
+                                    <button type="submit"
+                                        class="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100">
+                                        提交体验选择
+                                        <ArrowRight class="h-4 w-4" />
+                                    </button>
+                                </form>
+
+                            </template>
                         </div>
                     </div>
                 </div>
@@ -460,12 +553,20 @@
         <!-- 页脚 -->
         <footer class="border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
             <div
-                class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6">
+                class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-6">
                 <div class="flex items-center gap-2.5">
                     <span
                         class="grid h-7 w-7 place-items-center rounded-md bg-accent text-sm font-bold text-white">P</span>
                     <span
                         class="text-sm font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">PrizePass</span>
+                </div>
+                <div
+                    class="mx-auto flex max-w-6xl flex-col items-center gap-2  border-slate-100 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:justify-center sm:gap-5 sm:px-6  dark:text-slate-400">
+                    <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer"
+                        class="hover:text-ink dark:hover:text-slate-200">沪ICP备2025155706号-1</a>
+                    <a href="http://www.beian.gov.cn/portal/registerSystemInfo/" target="_blank"
+                        rel="noopener noreferrer" class="hover:text-ink dark:hover:text-slate-200">沪公网安备
+                        31011002007744号</a>
                 </div>
                 <p class="text-xs text-slate-500 dark:text-slate-400">
                     Made with ❤️ by
@@ -474,6 +575,7 @@
                     · 比赛奖品兑换平台 · 轻量、安全、到点自提
                 </p>
             </div>
+
         </footer>
     </div>
 </template>
