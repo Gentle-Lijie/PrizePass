@@ -152,6 +152,7 @@ export interface RedemptionSuccess {
   status: 'submitted'
   total_redeem_value: number
   unused_quota: number
+  custom_name: string | null
   pickup_location: string
   pickup_instructions: string
 }
@@ -168,6 +169,10 @@ export interface AdminRedemption {
   contact_name: string
   contact_phone: string
   note: string | null
+  custom_name: string | null
+  custom_url: string | null
+  custom_note: string | null
+  custom_price: number | null
   items_summary: string
   total_redeem_value: number
   quota: number

@@ -60,7 +60,7 @@ class RoutingConfig(StrictModel):
 
 
 class RoutingUpdate(StrictModel):
-    routes: Annotated[list[RoutingConfig], Field(min_length=5, max_length=5)]
+    routes: Annotated[list[RoutingConfig], Field(min_length=len(EVENT_TYPES), max_length=len(EVENT_TYPES))]
 
 
 def serialize_routing(db: Session) -> list[dict]:

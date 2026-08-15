@@ -37,11 +37,11 @@ def create_job(channel: NotificationChannel = NotificationChannel.EMAIL) -> int:
 def test_templates_are_fixed_and_reject_unknown_variables() -> None:
     response = client.get("/api/admin/notification-templates", headers=ADMIN)
     assert response.status_code == 200
-    assert len(response.json()["templates"]) == 5
+    assert len(response.json()["templates"]) == 7
     assert "smtp" in response.json()["configuration"]
     assert "email_poster" in response.json()["configuration"]
     assert response.json()["templates"][0]["html_template"]
-    assert len(response.json()["routing"]) == 5
+    assert len(response.json()["routing"]) == 7
     invalid = client.put(
         "/api/admin/notification-templates/code_issued",
         headers=ADMIN,

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.main import app
 from app.models import (
     CodeStatus,
+    NotificationChannel,
     NotificationJob,
     Prize,
     Redemption,
@@ -147,6 +148,96 @@ def test_public_prizes_hide_off_shelf_and_batch_delete_skips_referenced() -> Non
         "deleted": 1,
         "skipped": [{"id": redeemable, "name": "可兑换"}],
     }
+
+
+def test_custom_prize_redemption_flow() -> None:
+    event_id, code, prizes = setup_redeemable(500, [("奖品甲", 200, 2)])
+    base = {
+        "contact_name": "张三",
+        "contact_phone": "+86 138-0013-8000",
+        "note": None,
+    }
+    # Mixing custom and catalog items, or submitting neither, is rejected.
+    mixed = client.post(
+        "/api/public/redemptions",
+        headers={"X-Redemption-Code": code},
+        json={**base, "items": [{"prize_id": prizes[0], "quantity": 1}], "custom_name": "无线键盘"},
+    )
+    assert mixed.status_code == 422
+    empty = client.post(
+        "/api/public/redemptions",
+        headers={"X-Redemption-Code": code},
+        json={**base, "items": []},
+    )
+    assert empty.status_code == 422
+
+    submitted = client.post(
+        "/api/public/redemptions",
+        headers={"X-Redemption-Code": code},
+        json={
+            **base,
+            "items": [],
+            "custom_name": "无线键盘",
+            "custom_url": "https://item.jd.com/100000000001.html",
+            "custom_note": "黑色",
+            "custom_price": 19900,
+        },
+    )
+    assert submitted.status_code == 201, submitted.text
+    assert submitted.json()["custom_name"] == "无线键盘"
+    assert submitted.json()["total_redeem_value"] == 0
+    redemption_id = submitted.json()["id"]
+
+    listed = client.get(f"/api/admin/events/{event_id}/redemptions", headers=ADMIN).json()
+    record = next(item for item in listed if item["id"] == redemption_id)
+    assert record["items_summary"] == "自定义：无线键盘"
+    assert record["custom_url"] == "https://item.jd.com/100000000001.html"
+    assert record["custom_price"] == 19900
+    wish_text = next(
+        job.text_rendered
+        for job in Session(test_engine).scalars(
+            select(NotificationJob).where(NotificationJob.event_type == "wish_submitted")
+        )
+        if job.channel == NotificationChannel.EMAIL
+    )
+    assert "199.00 元" in wish_text
+
+    with Session(test_engine) as session:
+        wish_jobs = session.scalars(
+            select(NotificationJob).where(NotificationJob.event_type == "wish_submitted")
+        ).all()
+        assert len(wish_jobs) == 2  # smtp (operations) + webhook; email_poster disabled in tests
+        assert all(job.redemption_id == redemption_id for job in wish_jobs)
+
+    # Accept: the ready transition notifies the winner.
+    assert client.post(f"/api/admin/redemptions/{redemption_id}/ready", headers=ADMIN).status_code == 200
+    with Session(test_engine) as session:
+        ready_jobs = session.scalars(
+            select(NotificationJob).where(NotificationJob.event_type == "redemption_ready")
+        ).all()
+        assert ready_jobs and all(job.winner_id is not None for job in ready_jobs)
+
+    # Rejecting a custom prize requires an admin-written reason for the winner email.
+    no_reason = client.post(f"/api/admin/redemptions/{redemption_id}/cancel", headers=ADMIN)
+    assert no_reason.status_code == 422
+    rejected = client.post(
+        f"/api/admin/redemptions/{redemption_id}/cancel",
+        headers=ADMIN,
+        json={"reason": "超出本次活动预算"},
+    )
+    assert rejected.status_code == 200, rejected.text
+    with Session(test_engine) as session:
+        code_row = session.scalar(select(RedemptionCode).where(RedemptionCode.code == code))
+        assert code_row.status == CodeStatus.ISSUED
+        rejected_jobs = session.scalars(
+            select(NotificationJob).where(NotificationJob.event_type == "wish_rejected")
+        ).all()
+        assert rejected_jobs
+        assert all("超出本次活动预算" in job.text_rendered for job in rejected_jobs)
+        cancelled_jobs = session.scalars(
+            select(NotificationJob).where(NotificationJob.event_type == "redemption_cancelled")
+        ).all()
+        assert not cancelled_jobs
 
 
 def test_multi_prize_redemption_is_atomic_and_snapshotted() -> None:

@@ -65,16 +65,34 @@ async function redemptionAction(
   redemption: AdminRedemption,
   action: 'ready' | 'pickup' | 'cancel',
 ) {
-  const labels = {
-    ready: '标记为待领取',
-    pickup: '标记为已领取',
-    cancel: '取消兑换并恢复库存',
-  }
-  if (!window.confirm(`确认${labels[action]}？`)) return
+  const labels = redemption.custom_name
+    ? {
+        ready: '采纳该自定义奖品',
+        pickup: '标记为已领取',
+        cancel: '拒绝该自定义奖品并恢复兑换码',
+      }
+    : {
+        ready: '标记为待领取',
+        pickup: '标记为已领取',
+        cancel: '取消兑换并恢复库存',
+      }
+  let reason: string | null = null
+  if (action === 'cancel' && redemption.custom_name) {
+    const input = window.prompt(
+      `请输入驳回「${redemption.custom_name}」的原因（将通过邮件通知获奖人）`,
+    )
+    if (input === null) return
+    reason = input.trim()
+    if (!reason) {
+      error.value = '驳回原因不能为空'
+      return
+    }
+  } else if (!window.confirm(`确认${labels[action]}？`)) return
   busy.value = true
   try {
     await api(`/api/admin/redemptions/${redemption.id}/${action}`, {
       method: 'POST',
+      ...(reason !== null ? { body: JSON.stringify({ reason }) } : {}),
     })
     notice.value = '兑换状态已更新'
     await load()
@@ -194,7 +212,7 @@ async function redemptionAction(
                 :disabled="busy"
                 @click="redemptionAction(record, 'ready')"
               >
-                已备货</button
+                {{ record.custom_name ? '采纳' : '已备货' }}</button
               ><button
                 v-if="record.status === 'ready'"
                 class="rounded-lg bg-emerald-600 px-3 py-2 font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -209,7 +227,7 @@ async function redemptionAction(
                 class="ml-3 text-red-600 dark:text-red-400"
                 @click="redemptionAction(record, 'cancel')"
               >
-                取消
+                {{ record.custom_name ? '拒绝' : '取消' }}
               </button>
             </td>
           </tr>
@@ -274,7 +292,34 @@ async function redemptionAction(
         >
           备注：{{ selectedRedemption.note }}
         </p>
-        <div class="mt-5">
+        <div v-if="selectedRedemption.custom_name" class="mt-5">
+          <h3 class="font-semibold">自定义奖品</h3>
+          <div class="mt-3 border-t pt-3 text-sm">
+            <p>
+              <strong>{{ selectedRedemption.custom_name }}</strong>
+              <strong
+                v-if="selectedRedemption.custom_price !== null"
+                class="ml-2 text-blue-600 dark:text-blue-400"
+                >¥{{ (selectedRedemption.custom_price / 100).toFixed(2) }}</strong
+              >
+              <a
+                v-if="selectedRedemption.custom_url"
+                :href="selectedRedemption.custom_url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="ml-2 break-all text-blue-600 dark:text-blue-400"
+                >打开链接 ↗</a
+              >
+            </p>
+            <p
+              v-if="selectedRedemption.custom_note"
+              class="mt-2 text-slate-500 dark:text-slate-400"
+            >
+              备注：{{ selectedRedemption.custom_note }}
+            </p>
+          </div>
+        </div>
+        <div v-if="selectedRedemption.items?.length" class="mt-5">
           <h3 class="font-semibold">奖品快照</h3>
           <div
             v-for="item in selectedRedemption.items"
@@ -317,7 +362,7 @@ async function redemptionAction(
             class="btn-primary"
             @click="redemptionAction(selectedRedemption, 'ready')"
           >
-            标记待领取</button
+            {{ selectedRedemption.custom_name ? '采纳' : '标记待领取' }}</button
           ><button
             v-if="selectedRedemption.status === 'ready'"
             class="btn-primary"
@@ -332,7 +377,7 @@ async function redemptionAction(
             class="btn-secondary text-red-600 dark:text-red-400"
             @click="redemptionAction(selectedRedemption, 'cancel')"
           >
-            取消兑换
+            {{ selectedRedemption.custom_name ? '拒绝（恢复兑换码）' : '取消兑换' }}
           </button>
         </div>
       </section>

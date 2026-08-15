@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
+from pydantic import Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,7 +20,13 @@ from .models import (
     RedemptionStatus,
     Winner,
 )
-from .notifications import create_notification_jobs, render_notification, utc_now
+from .notifications import (
+    create_notification_jobs,
+    render_notification,
+    utc_now,
+    wish_rejected_context,
+)
+from .schemas import StrictModel
 from .spreadsheets import export_csv, export_xlsx
 from .timeutils import utc_iso
 
@@ -79,7 +86,9 @@ def related(db: Session, redemption: Redemption) -> tuple[RedemptionCode, Winner
     return code, winner, event, items
 
 
-def item_summary(items: list[RedemptionItem]) -> str:
+def item_summary(items: list[RedemptionItem], redemption: Redemption) -> str:
+    if not items and redemption.custom_name:
+        return f"自定义：{redemption.custom_name}"
     return "、".join(f"{item.prize_name_snapshot} × {item.quantity}" for item in items)
 
 
@@ -99,7 +108,7 @@ def status_context(
         "redemption_url": f"{get_settings().public_base_url.rstrip('/')}/redeem",
         "deadline": event.redemption_deadline.isoformat(sep=" "),
         "order_no": redemption.order_no,
-        "items_summary": item_summary(items),
+        "items_summary": item_summary(items, redemption),
         "total_redeem_value": redemption.total_redeem_value,
         "unused_quota": redemption.quota_snapshot - redemption.total_redeem_value,
         "status": redemption.status.value,
@@ -124,7 +133,11 @@ def serialize_redemption(
         "contact_name": redemption.contact_name,
         "contact_phone": redemption.contact_phone,
         "note": redemption.note,
-        "items_summary": item_summary(items),
+        "custom_name": redemption.custom_name,
+        "custom_url": redemption.custom_url,
+        "custom_note": redemption.custom_note,
+        "custom_price": redemption.custom_price,
+        "items_summary": item_summary(items, redemption),
         "total_redeem_value": redemption.total_redeem_value,
         "quota": redemption.quota_snapshot,
         "unused_quota": redemption.quota_snapshot - redemption.total_redeem_value,
@@ -237,12 +250,26 @@ def mark_picked_up(redemption_id: int, db: DbSession) -> dict:
     )
 
 
+class CancelRequest(StrictModel):
+    reason: Annotated[str | None, Field(max_length=500)] = None
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
 @router.post("/redemptions/{redemption_id}/cancel")
-def cancel_redemption(redemption_id: int, db: DbSession) -> dict:
+def cancel_redemption(
+    redemption_id: int, db: DbSession, payload: CancelRequest | None = None
+) -> dict:
     try:
         redemption = redemption_or_404(db, redemption_id, lock=True)
         if redemption.status not in (RedemptionStatus.SUBMITTED, RedemptionStatus.READY):
             fail(409, "invalid_redemption_transition", "当前兑换状态不能取消")
+        # Rejecting a custom prize requires an admin-written reason for the winner email.
+        if redemption.custom_name and not (payload and payload.reason):
+            fail(422, "reason_required", "驳回自定义奖品申请必须填写原因")
         code = db.scalar(
             select(RedemptionCode)
             .where(RedemptionCode.id == redemption.code_id)
@@ -274,14 +301,23 @@ def cancel_redemption(redemption_id: int, db: DbSession) -> dict:
         code.redeemed_at = None
         redemption.status = RedemptionStatus.CANCELLED
         redemption.cancelled_at = utc_now()
-        rendered, html_rendered = render_notification(
-            db,
-            "redemption_cancelled",
-            status_context(redemption, code, winner, event, items),
-        )
+        if redemption.custom_name:
+            rendered, html_rendered = render_notification(
+                db,
+                "wish_rejected",
+                wish_rejected_context(winner, event, code.code, redemption, payload.reason or ""),
+            )
+            event_type = "wish_rejected"
+        else:
+            rendered, html_rendered = render_notification(
+                db,
+                "redemption_cancelled",
+                status_context(redemption, code, winner, event, items),
+            )
+            event_type = "redemption_cancelled"
         create_notification_jobs(
             db,
-            event_type="redemption_cancelled",
+            event_type=event_type,
             text_rendered=rendered,
             winner_email=winner.email,
             html_rendered=html_rendered,

@@ -25,6 +25,8 @@ EVENT_TYPES = (
     "redemption_ready",
     "redemption_picked_up",
     "redemption_cancelled",
+    "wish_submitted",
+    "wish_rejected",
 )
 
 DEFAULT_RECIPIENTS = {
@@ -33,6 +35,8 @@ DEFAULT_RECIPIENTS = {
     "redemption_ready": NotificationRecipient.WINNER,
     "redemption_picked_up": NotificationRecipient.OPERATIONS,
     "redemption_cancelled": NotificationRecipient.WINNER,
+    "wish_submitted": NotificationRecipient.OPERATIONS,
+    "wish_rejected": NotificationRecipient.WINNER,
 }
 
 
@@ -54,6 +58,8 @@ DEFAULT_TEMPLATES = {
     "redemption_ready": "{{winner_name}}，兑换单 {{order_no}} 已备货，请前往 {{pickup_location}} 领取。{{pickup_instructions}}",
     "redemption_picked_up": "兑换单 {{order_no}} 已领取。获奖人：{{winner_name}}；奖品：{{items_summary}}；状态：{{status}}。",
     "redemption_cancelled": "{{winner_name}}，兑换单 {{order_no}} 已取消，兑换码 {{code}} 已恢复使用。状态：{{status}}。",
+    "wish_submitted": "{{winner_name}} 在 {{event_name}} 提交了自定义奖品申请 {{order_no}}：{{wish_name}}，期望价格 {{wish_price}}。链接：{{wish_url}}；备注：{{wish_note}}。请联系人 {{contact_name}} {{contact_phone}}。请在后台确认采纳或拒绝。",
+    "wish_rejected": "{{winner_name}}，你提交的自定义奖品申请 {{wish_name}} 因为 {{reason}} 原因被驳回。兑换码 {{code}} 已恢复使用，可重新选择奖品。",
 }
 
 
@@ -101,6 +107,18 @@ DEFAULT_HTML_TEMPLATES = {
         "<p>{{winner_name}}，兑换单 <strong>{{order_no}}</strong> 已取消。</p>"
         "<p>兑换码 <strong>{{code}}</strong> 已恢复使用。状态：{{status}}</p>",
     ),
+    "wish_submitted": html_document(
+        "新的自定义奖品申请",
+        "<p>{{winner_name}} 在 <strong>{{event_name}}</strong> 提交了自定义奖品申请 <strong>{{order_no}}</strong>。</p>"
+        "<p>奖品：{{wish_name}}<br>期望价格：{{wish_price}}<br>链接：<a href=\"{{wish_url}}\">{{wish_url}}</a><br>备注：{{wish_note}}</p>"
+        "<p>联系人：{{contact_name}} {{contact_phone}}</p>"
+        "<p>请在后台确认采纳（标记待领取）或拒绝（取消并恢复兑换码）。</p>",
+    ),
+    "wish_rejected": html_document(
+        "自定义奖品申请被驳回",
+        "<p>{{winner_name}}，你提交的自定义奖品申请 <strong>{{wish_name}}</strong> 因为 <strong>{{reason}}</strong> 原因被驳回。</p>"
+        "<p>兑换码 <strong>{{code}}</strong> 已恢复使用，可重新选择奖品。</p>",
+    ),
 }
 
 ALL_TEMPLATE_VARIABLES = {
@@ -118,6 +136,13 @@ ALL_TEMPLATE_VARIABLES = {
     "status",
     "pickup_location",
     "pickup_instructions",
+    "wish_name",
+    "wish_url",
+    "wish_note",
+    "wish_price",
+    "reason",
+    "contact_name",
+    "contact_phone",
 }
 EVENT_VARIABLES = {
     "code_issued": {
@@ -135,6 +160,29 @@ EVENT_VARIABLES = {
     "redemption_ready": ALL_TEMPLATE_VARIABLES,
     "redemption_picked_up": ALL_TEMPLATE_VARIABLES,
     "redemption_cancelled": ALL_TEMPLATE_VARIABLES,
+    "wish_submitted": {
+        "winner_name",
+        "event_name",
+        "order_no",
+        "wish_name",
+        "wish_url",
+        "wish_note",
+        "wish_price",
+        "contact_name",
+        "contact_phone",
+    },
+    "wish_rejected": {
+        "winner_name",
+        "event_name",
+        "order_no",
+        "wish_name",
+        "wish_url",
+        "wish_note",
+        "wish_price",
+        "reason",
+        "code",
+        "status",
+    },
 }
 VARIABLE_RE = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}")
 
@@ -199,6 +247,39 @@ def code_issued_context(winner: Winner, code: str, event) -> dict[str, str | int
         "deadline": event.redemption_deadline.isoformat(sep=" "),
         "pickup_location": event.pickup_location,
         "pickup_instructions": event.pickup_instructions,
+    }
+
+
+def wish_submitted_context(
+    winner: Winner, event, order_no: str, redemption
+) -> dict[str, str | int]:
+    return {
+        "winner_name": winner.name,
+        "event_name": event.name,
+        "order_no": order_no,
+        "wish_name": redemption.custom_name or "",
+        "wish_url": redemption.custom_url or "无",
+        "wish_note": redemption.custom_note or "无",
+        "wish_price": f"{redemption.custom_price / 100:.2f} 元" if redemption.custom_price is not None else "未填写",
+        "contact_name": redemption.contact_name,
+        "contact_phone": redemption.contact_phone,
+    }
+
+
+def wish_rejected_context(
+    winner: Winner, event, code: str, redemption, reason: str
+) -> dict[str, str | int]:
+    return {
+        "winner_name": winner.name,
+        "event_name": event.name,
+        "order_no": redemption.order_no,
+        "wish_name": redemption.custom_name or "",
+        "wish_url": redemption.custom_url or "无",
+        "wish_note": redemption.custom_note or "无",
+        "wish_price": f"{redemption.custom_price / 100:.2f} 元" if redemption.custom_price is not None else "未填写",
+        "reason": reason,
+        "code": code,
+        "status": redemption.status.value,
     }
 
 

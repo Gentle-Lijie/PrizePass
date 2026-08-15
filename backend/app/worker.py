@@ -22,6 +22,8 @@ SUBJECTS = {
     "redemption_ready": "[PrizePass] 奖品待领取",
     "redemption_picked_up": "[PrizePass] 兑换已领取",
     "redemption_cancelled": "[PrizePass] 兑换已取消",
+    "wish_submitted": "[PrizePass] 新的自定义奖品申请",
+    "wish_rejected": "[PrizePass] 自定义奖品申请被驳回",
 }
 EMAIL_POSTER_PRESETS = {
     "none": {},

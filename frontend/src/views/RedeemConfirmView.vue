@@ -18,6 +18,7 @@ const selected = computed(() =>
     (prize) => (redemption.quantities[prize.id] ?? 0) > 0,
   ),
 )
+const isCustom = computed(() => redemption.customPrize !== null)
 const used = computed(() =>
   selected.value.reduce(
     (sum, prize) => sum + prize.redeem_value * redemption.quantities[prize.id]!,
@@ -26,10 +27,24 @@ const used = computed(() =>
 )
 const remaining = computed(() => (redemption.context?.quota ?? 0) - used.value)
 
+// Custom-prize submissions must first pass a one-off invoice confirmation.
+// Confirmation is intentionally not persisted anywhere.
+const showInvoiceConfirm = ref(false)
+
+async function requestSubmit() {
+  if (isCustom.value) {
+    showInvoiceConfirm.value = true
+    return
+  }
+  await submit()
+}
+
 async function submit() {
+  showInvoiceConfirm.value = false
   busy.value = true
   error.value = ''
   try {
+    const custom = redemption.customPrize
     redemption.success = await api<RedemptionSuccess>(
       '/api/public/redemptions',
       {
@@ -38,10 +53,22 @@ async function submit() {
           contact_name: form.contact_name,
           contact_phone: form.contact_phone,
           note: form.note || null,
-          items: selected.value.map((prize) => ({
-            prize_id: prize.id,
-            quantity: redemption.quantities[prize.id],
-          })),
+          ...(custom
+            ? {
+                items: [],
+                custom_name: custom.name,
+                custom_url: custom.url || null,
+                custom_note: custom.note || null,
+                custom_price: custom.priceYuan
+                  ? Math.round(Number(custom.priceYuan) * 100)
+                  : null,
+              }
+            : {
+                items: selected.value.map((prize) => ({
+                  prize_id: prize.id,
+                  quantity: redemption.quantities[prize.id],
+                })),
+              }),
         }),
       },
     )
@@ -58,7 +85,7 @@ onMounted(async () => {
   if (
     !auth.redemptionCode ||
     !redemption.context ||
-    selected.value.length === 0
+    (selected.value.length === 0 && !redemption.customPrize)
   )
     await router.replace('/redeem')
 })
@@ -76,32 +103,63 @@ onMounted(async () => {
     <form
       v-if="redemption.context"
       class="mt-6 grid gap-6"
-      @submit.prevent="submit"
+      @submit.prevent="requestSubmit"
     >
       <section class="card">
         <h2 class="font-semibold">奖品明细</h2>
-        <div
-          v-for="prize in selected"
-          :key="prize.id"
-          class="mt-4 flex flex-col gap-1 border-t border-slate-200 pt-4 text-sm dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <span class="break-words"
-            >{{ prize.name }} × {{ redemption.quantities[prize.id] }}</span
-          ><strong class="shrink-0"
-            >{{
-              prize.redeem_value * redemption.quantities[prize.id]!
-            }}
-            额度</strong
+        <template v-if="isCustom && redemption.customPrize">
+          <div class="mt-4 border-t border-slate-200 pt-4 text-sm dark:border-slate-700">
+            <p>
+              自定义奖品：<strong>{{ redemption.customPrize.name }}</strong>
+              <strong
+                v-if="redemption.customPrize.priceYuan"
+                class="ml-2 text-blue-600 dark:text-blue-400"
+                >¥{{ redemption.customPrize.priceYuan }}</strong
+              >
+            </p>
+            <a
+              v-if="redemption.customPrize.url"
+              :href="redemption.customPrize.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="mt-1 block break-all text-blue-600 dark:text-blue-400"
+              >{{ redemption.customPrize.url }} ↗</a
+            >
+            <p
+              v-if="redemption.customPrize.note"
+              class="mt-2 text-slate-500 dark:text-slate-400"
+            >
+              备注：{{ redemption.customPrize.note }}
+            </p>
+            <p class="mt-3 text-xs text-amber-600 dark:text-amber-400">
+              提交后管理员将确认是否采纳，结果会通过邮件通知你；被拒绝时兑换码会自动恢复，可重新选择奖品。
+            </p>
+          </div>
+        </template>
+        <template v-else>
+          <div
+            v-for="prize in selected"
+            :key="prize.id"
+            class="mt-4 flex flex-col gap-1 border-t border-slate-200 pt-4 text-sm dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between"
           >
-        </div>
-        <div
-          class="mt-5 flex flex-col gap-1 border-t border-slate-200 pt-4 dark:border-slate-700 sm:flex-row sm:justify-between"
-        >
-          <strong>总消耗 {{ used }}</strong
-          ><span class="text-emerald-600 dark:text-emerald-400"
-            >剩余 {{ remaining }}</span
+            <span class="break-words"
+              >{{ prize.name }} × {{ redemption.quantities[prize.id] }}</span
+            ><strong class="shrink-0"
+              >{{
+                prize.redeem_value * redemption.quantities[prize.id]!
+              }}
+              额度</strong
+            >
+          </div>
+          <div
+            class="mt-5 flex flex-col gap-1 border-t border-slate-200 pt-4 dark:border-slate-700 sm:flex-row sm:justify-between"
           >
-        </div>
+            <strong>总消耗 {{ used }}</strong
+            ><span class="text-emerald-600 dark:text-emerald-400"
+              >剩余 {{ remaining }}</span
+            >
+          </div>
+        </template>
       </section>
       <section class="card">
         <h2 class="font-semibold">领取人信息</h2>
@@ -170,11 +228,42 @@ onMounted(async () => {
         ></div>
         <button
           class="btn-primary relative w-full py-3 shadow-lg sm:static sm:shadow-none"
-          :disabled="busy || remaining < 0"
+          :disabled="busy || (!isCustom && remaining < 0)"
+          @click="requestSubmit"
         >
           {{ busy ? '提交中…' : '确认并提交兑换' }}
         </button>
       </div>
     </form>
+
+    <div
+      v-if="showInvoiceConfirm"
+      class="fixed inset-0 z-30 grid place-items-center bg-slate-950/40 p-4"
+      @click.self="showInvoiceConfirm = false"
+    >
+      <div class="card w-full max-w-md">
+        <h2 class="text-xl font-bold">请确认是否可以开票</h2>
+        <p class="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
+          提交自定义奖品前，请确认该商品
+          <strong>可以开具发票</strong>（报销/报账需要发票凭证）。确认后才会提交兑换申请。
+        </p>
+        <div class="mt-6 flex flex-col gap-2 sm:flex-row">
+          <button
+            class="btn-primary flex-1"
+            :disabled="busy"
+            @click="submit"
+          >
+            {{ busy ? '提交中…' : '确认可以开票，提交' }}
+          </button>
+          <button
+            class="btn-secondary flex-1"
+            type="button"
+            @click="showInvoiceConfirm = false"
+          >
+            返回检查
+          </button>
+        </div>
+      </div>
+    </div>
   </main>
 </template>

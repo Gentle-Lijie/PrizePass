@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,8 +22,13 @@ from .models import (
     RedemptionStatus,
     Winner,
 )
-from .notifications import create_notification_jobs, render_notification, utc_now
-from .schemas import StrictModel
+from .notifications import (
+    create_notification_jobs,
+    render_notification,
+    utc_now,
+    wish_submitted_context,
+)
+from .schemas import StrictModel, validate_https_url
 from .timeutils import utc_iso
 
 
@@ -42,7 +47,13 @@ class RedemptionRequest(StrictModel):
     contact_name: Annotated[str, Field(min_length=1, max_length=100)]
     contact_phone: Annotated[str, Field(min_length=5, max_length=30)]
     note: Annotated[str | None, Field(max_length=500)] = None
-    items: Annotated[list[RedemptionRequestItem], Field(min_length=1)]
+    items: Annotated[list[RedemptionRequestItem], Field(min_length=0)] = []
+    # Alternatively the winner may describe one custom prize instead of picking
+    # catalog items; custom and items are mutually exclusive.
+    custom_name: Annotated[str | None, Field(min_length=1, max_length=200)] = None
+    custom_url: Annotated[str | None, Field(max_length=2000)] = None
+    custom_note: Annotated[str | None, Field(max_length=2000)] = None
+    custom_price: Annotated[int | None, Field(ge=0, le=4_294_967_295)] = None
 
     @field_validator("contact_name", "contact_phone")
     @classmethod
@@ -59,10 +70,28 @@ class RedemptionRequest(StrictModel):
             raise ValueError("手机号只能包含数字、空格、+、- 和括号，长度为 5～30")
         return value
 
-    @field_validator("note")
+    @field_validator("note", "custom_note")
     @classmethod
     def normalize_note(cls, value: str | None) -> str | None:
         return value.strip() or None if value is not None else None
+
+    @field_validator("custom_name")
+    @classmethod
+    def normalize_custom_name(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @field_validator("custom_url")
+    @classmethod
+    def valid_custom_url(cls, value: str | None) -> str | None:
+        return validate_https_url(value)
+
+    @model_validator(mode="after")
+    def items_xor_custom(self) -> "RedemptionRequest":
+        if self.custom_name and self.items:
+            raise ValueError("自定义奖品不能与列表奖品同时提交")
+        if not self.custom_name and not self.items:
+            raise ValueError("请选择奖品或填写自定义奖品")
+        return self
 
 
 def now_utc_naive() -> datetime:
@@ -176,21 +205,26 @@ def submit_redemption(
         )
         if existing_redemption is not None and existing_redemption.status is not RedemptionStatus.CANCELLED:
             fail(409, "already_redeemed", "兑换码已提交过兑换")
-        quantities = {item.prize_id: item.quantity for item in payload.items}
-        sorted_ids = sorted(prize_ids)
-        prizes = list(
-            db.scalars(
-                select(Prize)
-                .where(Prize.id.in_(sorted_ids))
-                .order_by(Prize.id)
-                .with_for_update()
-            ).all()
-        )
-        if len(prizes) != len(sorted_ids) or any(prize.event_id != event.id for prize in prizes):
-            fail(409, "invalid_prize", "购物篮包含不属于当前比赛的奖品")
-        total = sum(prize.redeem_value * quantities[prize.id] for prize in prizes)
-        if total > code.quota:
-            fail(409, "quota_exceeded", "所选奖品总抵扣额度超过 quota")
+        if payload.custom_name:
+            prizes: list[Prize] = []
+            quantities: dict[int, int] = {}
+            total = 0
+        else:
+            quantities = {item.prize_id: item.quantity for item in payload.items}
+            sorted_ids = sorted(prize_ids)
+            prizes = list(
+                db.scalars(
+                    select(Prize)
+                    .where(Prize.id.in_(sorted_ids))
+                    .order_by(Prize.id)
+                    .with_for_update()
+                ).all()
+            )
+            if len(prizes) != len(sorted_ids) or any(prize.event_id != event.id for prize in prizes):
+                fail(409, "invalid_prize", "购物篮包含不属于当前比赛的奖品")
+            total = sum(prize.redeem_value * quantities[prize.id] for prize in prizes)
+            if total > code.quota:
+                fail(409, "quota_exceeded", "所选奖品总抵扣额度超过 quota")
 
         if existing_redemption is None:
             redemption = Redemption(
@@ -200,6 +234,10 @@ def submit_redemption(
                 contact_name=payload.contact_name,
                 contact_phone=payload.contact_phone,
                 note=payload.note,
+                custom_name=payload.custom_name,
+                custom_url=payload.custom_url,
+                custom_note=payload.custom_note,
+                custom_price=payload.custom_price,
                 total_redeem_value=total,
                 quota_snapshot=code.quota,
                 pickup_location_snapshot=event.pickup_location,
@@ -221,6 +259,10 @@ def submit_redemption(
             redemption.contact_name = payload.contact_name
             redemption.contact_phone = payload.contact_phone
             redemption.note = payload.note
+            redemption.custom_name = payload.custom_name
+            redemption.custom_url = payload.custom_url
+            redemption.custom_note = payload.custom_note
+            redemption.custom_price = payload.custom_price
             redemption.total_redeem_value = total
             redemption.quota_snapshot = code.quota
             redemption.pickup_location_snapshot = event.pickup_location
@@ -252,32 +294,46 @@ def submit_redemption(
             summary_parts.append(f"{prize.name} × {quantity}")
         code.status = CodeStatus.REDEEMED
         code.redeemed_at = utc_now()
-        context = {
-            "winner_name": winner.name,
-            "winner_email": winner.email,
-            "event_name": event.name,
-            "code": code.code,
-            "quota": code.quota,
-            "redemption_url": f"{get_settings().public_base_url.rstrip('/')}/redeem",
-            "deadline": event.redemption_deadline.isoformat(sep=" "),
-            "order_no": redemption.order_no,
-            "items_summary": "、".join(summary_parts),
-            "total_redeem_value": total,
-            "unused_quota": code.quota - total,
-            "status": redemption.status.value,
-            "pickup_location": event.pickup_location,
-            "pickup_instructions": event.pickup_instructions,
-        }
-        rendered, html_rendered = render_notification(db, "redemption_submitted", context)
-        create_notification_jobs(
-            db,
-            event_type="redemption_submitted",
-            text_rendered=rendered,
-            winner_email=winner.email,
-            html_rendered=html_rendered,
-            winner_id=winner.id,
-            redemption_id=redemption.id,
-        )
+        if payload.custom_name:
+            rendered, html_rendered = render_notification(
+                db, "wish_submitted", wish_submitted_context(winner, event, redemption.order_no, redemption)
+            )
+            create_notification_jobs(
+                db,
+                event_type="wish_submitted",
+                text_rendered=rendered,
+                winner_email=winner.email,
+                html_rendered=html_rendered,
+                winner_id=winner.id,
+                redemption_id=redemption.id,
+            )
+        else:
+            context = {
+                "winner_name": winner.name,
+                "winner_email": winner.email,
+                "event_name": event.name,
+                "code": code.code,
+                "quota": code.quota,
+                "redemption_url": f"{get_settings().public_base_url.rstrip('/')}/redeem",
+                "deadline": event.redemption_deadline.isoformat(sep=" "),
+                "order_no": redemption.order_no,
+                "items_summary": "、".join(summary_parts),
+                "total_redeem_value": total,
+                "unused_quota": code.quota - total,
+                "status": redemption.status.value,
+                "pickup_location": event.pickup_location,
+                "pickup_instructions": event.pickup_instructions,
+            }
+            rendered, html_rendered = render_notification(db, "redemption_submitted", context)
+            create_notification_jobs(
+                db,
+                event_type="redemption_submitted",
+                text_rendered=rendered,
+                winner_email=winner.email,
+                html_rendered=html_rendered,
+                winner_id=winner.id,
+                redemption_id=redemption.id,
+            )
         db.commit()
     except Exception:
         db.rollback()
@@ -288,6 +344,7 @@ def submit_redemption(
         "status": redemption.status.value,
         "total_redeem_value": total,
         "unused_quota": code.quota - total,
+        "custom_name": redemption.custom_name,
         "pickup_location": redemption.pickup_location_snapshot,
         "pickup_instructions": redemption.pickup_instructions_snapshot,
     }

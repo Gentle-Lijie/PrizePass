@@ -150,6 +150,12 @@ class Redemption(Base):
     contact_name: Mapped[str] = mapped_column(String(100), nullable=False)
     contact_phone: Mapped[str] = mapped_column(String(30), nullable=False)
     note: Mapped[str | None] = mapped_column(String(500))
+    # A winner may describe a custom desired prize instead of picking catalog
+    # items; such redemptions have no items and skip quota math.
+    custom_name: Mapped[str | None] = mapped_column(String(200))
+    custom_url: Mapped[str | None] = mapped_column(Text)
+    custom_note: Mapped[str | None] = mapped_column(Text)
+    custom_price: Mapped[int | None] = mapped_column(INTEGER(unsigned=True))
     total_redeem_value: Mapped[int] = uint()
     quota_snapshot: Mapped[int] = uint()
     pickup_location_snapshot: Mapped[str] = mapped_column(Text, nullable=False)

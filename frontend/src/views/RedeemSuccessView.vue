@@ -26,7 +26,9 @@ onMounted(async () => {
       </div>
       <h1 class="mt-4 text-2xl font-bold sm:mt-5 sm:text-3xl">兑换提交成功</h1>
       <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
-        请保存兑换单号，并按下方说明前往自提。
+        请保存兑换单号，并按下方说明前往自提。<template v-if="redemption.success.custom_name"
+          >自定义奖品提交后需管理员确认，结果会通过邮件通知你。</template
+        >
       </p>
       <div
         class="mt-5 min-w-0 rounded-xl bg-slate-950 p-4 text-white sm:mt-6 sm:p-5"
