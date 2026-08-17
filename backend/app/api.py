@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends
 
 from .auth import require_admin_password
 from .admin_events import router as admin_events_router
+from .admin_prizes import router as admin_prizes_router
+from .admin_purchases import router as admin_purchases_router
 from .admin_winners import router as admin_winners_router
 from .public_redemption import router as public_redemption_router
 from .admin_redemptions import router as admin_redemptions_router
@@ -22,6 +24,8 @@ def admin_check() -> dict[str, bool]:
 
 
 router.include_router(admin_events_router)
+router.include_router(admin_prizes_router)
+router.include_router(admin_purchases_router)
 router.include_router(admin_winners_router)
 router.include_router(public_redemption_router)
 router.include_router(admin_redemptions_router)

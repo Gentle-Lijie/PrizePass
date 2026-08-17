@@ -42,6 +42,7 @@ EXPORT_HEADERS = [
     "status",
     "winner_name",
     "winner_email",
+    "award_name",
     "contact_name",
     "contact_phone",
     "note",
@@ -346,6 +347,7 @@ def export_redemptions(event_id: int, db: DbSession, format: str = Query(pattern
                 "status": redemption.status.value,
                 "winner_name": winner.name,
                 "winner_email": winner.email,
+                "award_name": winner.award_name or "",
                 "contact_name": redemption.contact_name,
                 "contact_phone": redemption.contact_phone,
                 "note": redemption.note or "",
@@ -368,3 +370,67 @@ def export_redemptions(event_id: int, db: DbSession, format: str = Query(pattern
     else:
         content, media_type = export_xlsx(EXPORT_HEADERS, rows), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     return Response(content, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="redemptions.{format}"'})
+
+
+REIMBURSEMENT_EXPORT_HEADERS = [
+    "序号",
+    "奖品名称",
+    "单价（元）",
+    "数量",
+    "总价（元）",
+    "对应奖项",
+    "领奖人",
+    "兑换单号",
+    "领取时间",
+    "导出时间",
+]
+
+
+def reimbursement_rows(db: Session, event_id: int) -> list[dict]:
+    """Collect picked-up redemption items as reimbursement export rows."""
+    redemptions = db.scalars(
+        select(Redemption)
+        .where(
+            Redemption.event_id == event_id,
+            Redemption.status == RedemptionStatus.PICKED_UP,
+        )
+        .order_by(Redemption.picked_up_at, Redemption.id)
+    ).all()
+    exported_at = utc_now().strftime("%Y-%m-%d %H:%M:%S")
+    rows = []
+    sequence = 0
+    for redemption in redemptions:
+        _, winner, _, items = related(db, redemption)
+        picked_up_at = (utc_iso(redemption.picked_up_at) or "").replace("T", " ")
+        for item in items:
+            sequence += 1
+            rows.append(
+                {
+                    "序号": sequence,
+                    "奖品名称": item.prize_name_snapshot,
+                    "单价（元）": f"{item.real_value_snapshot / 100:.2f}",
+                    "数量": item.quantity,
+                    "总价（元）": f"{item.real_value_snapshot * item.quantity / 100:.2f}",
+                    "对应奖项": winner.award_name or "",
+                    "领奖人": winner.name,
+                    "兑换单号": redemption.order_no,
+                    "领取时间": picked_up_at,
+                    "导出时间": exported_at,
+                }
+            )
+    return rows
+
+
+@router.get("/events/{event_id}/redemptions/reimbursement-export")
+def export_reimbursements(event_id: int, db: DbSession, format: str = Query(pattern="^(csv|xlsx)$")) -> Response:
+    """报销专用导出：仅导出已领取（picked_up）的兑换，按奖品明细逐行展开。"""
+    get_event_or_404(db, event_id)
+    rows = reimbursement_rows(db, event_id)
+    matrix = [[row[header] for header in REIMBURSEMENT_EXPORT_HEADERS] for row in rows]
+    if format == "csv":
+        content, media_type = export_csv(REIMBURSEMENT_EXPORT_HEADERS, matrix), "text/csv; charset=utf-8"
+    else:
+        content, media_type = export_xlsx(REIMBURSEMENT_EXPORT_HEADERS, matrix), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return Response(content, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="reimbursement.{format}"'})
+
+

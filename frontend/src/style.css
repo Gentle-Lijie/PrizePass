@@ -3,6 +3,9 @@
 @tailwind utilities;
 
 @layer base {
+  th {
+    white-space: nowrap;
+  }
   :root {
     --color-ink: 23 32 51; /* #172033 */
     --color-accent: 37 99 235; /* #2563eb */

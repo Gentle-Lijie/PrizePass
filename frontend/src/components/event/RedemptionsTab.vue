@@ -2,15 +2,11 @@
 import { inject, onMounted, onUnmounted, ref } from 'vue'
 
 import { api, downloadAdmin } from '@/api/client'
-import type {
-  AdminRedemption,
-  AdminRedemptionStatus,
-} from '@/api/types'
+import type { AdminRedemption, AdminRedemptionStatus } from '@/api/types'
 import { eventTabContextKey } from '@/components/event/eventContext'
 
 const context = inject(eventTabContextKey)!
-const { eventId, redemptions, error, notice, busy, load, refresh, refreshHooks } =
-  context
+const { eventId, redemptions, error, notice, busy, load, refresh, refreshHooks } = context
 
 const selectedRedemption = ref<AdminRedemption | null>(null)
 const redemptionStatus = ref<AdminRedemptionStatus | ''>('')
@@ -32,12 +28,9 @@ function redemptionStatusLabel(status: AdminRedemptionStatus) {
 async function filterRedemptions() {
   const params = new URLSearchParams()
   if (redemptionStatus.value) params.set('status', redemptionStatus.value)
-  if (redemptionSearch.value.trim())
-    params.set('search', redemptionSearch.value.trim())
+  if (redemptionSearch.value.trim()) params.set('search', redemptionSearch.value.trim())
   try {
-    redemptions.value = await api<AdminRedemption[]>(
-      `/api/admin/events/${eventId}/redemptions?${params}`,
-    )
+    redemptions.value = await api<AdminRedemption[]>(`/api/admin/events/${eventId}/redemptions?${params}`)
   } catch (caught) {
     showError(caught, '加载兑换记录失败')
   }
@@ -45,9 +38,7 @@ async function filterRedemptions() {
 
 async function openRedemption(id: number) {
   try {
-    selectedRedemption.value = await api<AdminRedemption>(
-      `/api/admin/redemptions/${id}`,
-    )
+    selectedRedemption.value = await api<AdminRedemption>(`/api/admin/redemptions/${id}`)
   } catch (caught) {
     showError(caught, '加载兑换详情失败')
   }
@@ -55,16 +46,12 @@ async function openRedemption(id: number) {
 
 // Keep an open detail dialog in sync after a full refresh.
 function reopenAfterRefresh() {
-  if (selectedRedemption.value)
-    void openRedemption(selectedRedemption.value.id)
+  if (selectedRedemption.value) void openRedemption(selectedRedemption.value.id)
 }
 onMounted(() => refreshHooks.add(reopenAfterRefresh))
 onUnmounted(() => refreshHooks.delete(reopenAfterRefresh))
 
-async function redemptionAction(
-  redemption: AdminRedemption,
-  action: 'ready' | 'pickup' | 'cancel',
-) {
+async function redemptionAction(redemption: AdminRedemption, action: 'ready' | 'pickup' | 'cancel') {
   const labels = redemption.custom_name
     ? {
         ready: '采纳该自定义奖品',
@@ -78,9 +65,7 @@ async function redemptionAction(
       }
   let reason: string | null = null
   if (action === 'cancel' && redemption.custom_name) {
-    const input = window.prompt(
-      `请输入驳回「${redemption.custom_name}」的原因（将通过邮件通知获奖人）`,
-    )
+    const input = window.prompt(`请输入驳回「${redemption.custom_name}」的原因（将通过邮件通知获奖人）`)
     if (input === null) return
     reason = input.trim()
     if (!reason) {
@@ -98,9 +83,7 @@ async function redemptionAction(
     await load()
     await filterRedemptions()
     if (selectedRedemption.value) {
-      const refreshed = redemptions.value.find(
-        (item) => item.id === redemption.id,
-      )
+      const refreshed = redemptions.value.find((item) => item.id === redemption.id)
       selectedRedemption.value = refreshed
         ? await api<AdminRedemption>(`/api/admin/redemptions/${redemption.id}`)
         : null
@@ -116,10 +99,7 @@ async function redemptionAction(
 <template>
   <section class="mt-6">
     <div class="flex flex-wrap items-end justify-between gap-3">
-      <form
-        class="flex flex-wrap items-end gap-2"
-        @submit.prevent="filterRedemptions"
-      >
+      <form class="flex flex-wrap items-end gap-2" @submit.prevent="filterRedemptions">
         <label class="text-sm"
           >状态<select v-model="redemptionStatus" class="field mt-1">
             <option value="">全部</option>
@@ -130,52 +110,52 @@ async function redemptionAction(
           </select></label
         >
         <label class="text-sm"
-          >兑换单号<input
-            v-model="redemptionSearch"
-            class="field mt-1"
-            maxlength="24"
-            placeholder="搜索单号"
+          >兑换单号<input v-model="redemptionSearch" class="field mt-1" maxlength="24" placeholder="搜索单号"
         /></label>
         <button class="btn-secondary" type="submit">筛选</button>
       </form>
       <div class="flex gap-2">
-        <button
-          class="btn-secondary"
-          type="button"
-          :disabled="busy"
-          @click="refresh"
-        >
-          刷新状态</button
+        <button class="btn-secondary" type="button" :disabled="busy" @click="refresh">刷新状态</button
         ><button
           class="btn-secondary"
-          @click="
-            downloadAdmin(
-              `/api/admin/events/${eventId}/redemptions/export?format=csv`,
-              'redemptions.csv',
-            )
-          "
+          @click="downloadAdmin(`/api/admin/events/${eventId}/redemptions/export?format=csv`, 'redemptions.csv')"
         >
           导出 CSV</button
         ><button
           class="btn-secondary"
-          @click="
-            downloadAdmin(
-              `/api/admin/events/${eventId}/redemptions/export?format=xlsx`,
-              'redemptions.xlsx',
-            )
-          "
+          @click="downloadAdmin(`/api/admin/events/${eventId}/redemptions/export?format=xlsx`, 'redemptions.xlsx')"
         >
           导出 XLSX
         </button>
+        <button
+          class="btn-primary border border-transparent"
+          title="导出所有已领取的兑换记录，用于采购报销"
+          @click="
+            downloadAdmin(
+              `/api/admin/events/${eventId}/redemptions/reimbursement-export?format=xlsx`,
+              'reimbursement.xlsx',
+            )
+          "
+        >
+          导出报销 XLSX
+        </button>
+        <button
+          class="btn-primary border border-transparent"
+          title="导出所有已领取的兑换记录，用于采购报销"
+          @click="
+            downloadAdmin(
+              `/api/admin/events/${eventId}/redemptions/reimbursement-export?format=csv`,
+              'reimbursement.csv',
+            )
+          "
+        >
+          导出报销 CSV
+        </button>
       </div>
     </div>
-    <div
-      class="mt-5 overflow-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
-    >
+    <div class="mt-5 overflow-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
       <table class="w-full min-w-[1000px] text-left text-sm">
-        <thead
-          class="bg-slate-50 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300"
-        >
+        <thead class="bg-slate-50 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
           <tr>
             <th class="p-4">兑换单号</th>
             <th class="p-4">提交人</th>
@@ -190,10 +170,7 @@ async function redemptionAction(
         <tbody>
           <tr v-for="record in redemptions" :key="record.id" class="border-t">
             <td class="p-4 font-mono">
-              <button
-                class="text-blue-600 dark:text-blue-400"
-                @click="openRedemption(record.id)"
-              >
+              <button class="text-blue-600 dark:text-blue-400" @click="openRedemption(record.id)">
                 {{ record.order_no }}
               </button>
             </td>
@@ -202,6 +179,7 @@ async function redemptionAction(
             <td class="max-w-xs truncate p-4">{{ record.items_summary }}</td>
             <td class="p-4">{{ record.total_redeem_value }}</td>
             <td class="p-4">{{ redemptionStatusLabel(record.status) }}</td>
+
             <td class="p-4">
               {{ new Date(record.created_at).toLocaleString() }}
             </td>
@@ -221,9 +199,7 @@ async function redemptionAction(
               >
                 已领取</button
               ><button
-                v-if="
-                  record.status === 'submitted' || record.status === 'ready'
-                "
+                v-if="record.status === 'submitted' || record.status === 'ready'"
                 class="ml-3 text-red-600 dark:text-red-400"
                 @click="redemptionAction(record, 'cancel')"
               >
@@ -232,12 +208,7 @@ async function redemptionAction(
             </td>
           </tr>
           <tr v-if="redemptions.length === 0">
-            <td
-              colspan="8"
-              class="p-10 text-center text-slate-500 dark:text-slate-400"
-            >
-              暂无兑换记录
-            </td>
+            <td colspan="8" class="p-10 text-center text-slate-500 dark:text-slate-400">暂无兑换记录</td>
           </tr>
         </tbody>
       </table>
@@ -280,16 +251,12 @@ async function redemptionAction(
           <div>
             <span class="text-slate-500 dark:text-slate-400">额度</span>
             <p>
-              消耗 {{ selectedRedemption.total_redeem_value }} /
-              {{ selectedRedemption.quota }}，未用
+              消耗 {{ selectedRedemption.total_redeem_value }} / {{ selectedRedemption.quota }}，未用
               {{ selectedRedemption.unused_quota }}
             </p>
           </div>
         </div>
-        <p
-          v-if="selectedRedemption.note"
-          class="mt-4 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800"
-        >
+        <p v-if="selectedRedemption.note" class="mt-4 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800">
           备注：{{ selectedRedemption.note }}
         </p>
         <div v-if="selectedRedemption.custom_name" class="mt-5">
@@ -297,9 +264,7 @@ async function redemptionAction(
           <div class="mt-3 border-t pt-3 text-sm">
             <p>
               <strong>{{ selectedRedemption.custom_name }}</strong>
-              <strong
-                v-if="selectedRedemption.custom_price !== null"
-                class="ml-2 text-blue-600 dark:text-blue-400"
+              <strong v-if="selectedRedemption.custom_price !== null" class="ml-2 text-blue-600 dark:text-blue-400"
                 >¥{{ (selectedRedemption.custom_price / 100).toFixed(2) }}</strong
               >
               <a
@@ -311,10 +276,7 @@ async function redemptionAction(
                 >打开链接 ↗</a
               >
             </p>
-            <p
-              v-if="selectedRedemption.custom_note"
-              class="mt-2 text-slate-500 dark:text-slate-400"
-            >
+            <p v-if="selectedRedemption.custom_note" class="mt-2 text-slate-500 dark:text-slate-400">
               备注：{{ selectedRedemption.custom_note }}
             </p>
           </div>
@@ -326,11 +288,7 @@ async function redemptionAction(
             :key="item.id"
             class="mt-3 flex items-center gap-3 border-t pt-3"
           >
-            <img
-              :src="item.prize_image"
-              :alt="item.prize_name"
-              class="h-12 w-12 rounded object-cover"
-            />
+            <img :src="item.prize_image" :alt="item.prize_name" class="h-12 w-12 rounded object-cover" />
             <div class="flex-1">
               <strong>{{ item.prize_name }}</strong>
               <p class="text-xs text-slate-500 dark:text-slate-400">
@@ -343,19 +301,12 @@ async function redemptionAction(
         <div class="mt-5 rounded-lg bg-blue-50 p-4 text-sm dark:bg-blue-950/40">
           <strong>自提信息</strong>
           <p class="mt-1">{{ selectedRedemption.pickup_location }}</p>
-          <p
-            class="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300"
-          >
+          <p class="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">
             {{ selectedRedemption.pickup_instructions }}
           </p>
         </div>
         <div class="mt-5 flex flex-col justify-end gap-2 sm:flex-row">
-          <button
-            class="btn-secondary"
-            type="button"
-            :disabled="busy"
-            @click="openRedemption(selectedRedemption.id)"
-          >
+          <button class="btn-secondary" type="button" :disabled="busy" @click="openRedemption(selectedRedemption.id)">
             刷新状态</button
           ><button
             v-if="selectedRedemption.status === 'submitted'"
@@ -370,10 +321,7 @@ async function redemptionAction(
           >
             标记已领取</button
           ><button
-            v-if="
-              selectedRedemption.status === 'submitted' ||
-              selectedRedemption.status === 'ready'
-            "
+            v-if="selectedRedemption.status === 'submitted' || selectedRedemption.status === 'ready'"
             class="btn-secondary text-red-600 dark:text-red-400"
             @click="redemptionAction(selectedRedemption, 'cancel')"
           >

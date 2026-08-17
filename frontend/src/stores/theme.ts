@@ -14,10 +14,7 @@ function readThemePreference(): ThemePreference {
 }
 
 function readSystemTheme(): Theme {
-  return typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light'
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
 function resolveTheme(preference: ThemePreference): Theme {
@@ -39,10 +36,7 @@ export const useThemeStore = defineStore('theme', () => {
   const theme = ref<Theme>(resolveTheme(preference.value))
   applyTheme(theme.value)
 
-  const systemThemeMedia =
-    typeof window === 'undefined'
-      ? null
-      : window.matchMedia('(prefers-color-scheme: dark)')
+  const systemThemeMedia = typeof window === 'undefined' ? null : window.matchMedia('(prefers-color-scheme: dark)')
 
   function handleSystemThemeChange() {
     if (preference.value !== 'system') return

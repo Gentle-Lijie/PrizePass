@@ -56,6 +56,34 @@ print(f"MySQL 数据库 {url.database} 已就绪")
 PY
 )
 
+(cd "$ROOT_DIR/backend" && "$ROOT_DIR/.venv/bin/python" - <<'PY'
+from sqlalchemy import create_engine, text
+from app.config import get_settings
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
+engine = create_engine(get_settings().database_url)
+alembic_cfg = Config("alembic.ini")
+script = ScriptDirectory.from_config(alembic_cfg)
+head_revision = script.get_current_head()
+
+with engine.connect() as conn:
+    try:
+        result = conn.execute(text("SELECT version_num FROM alembic_version"))
+        current = result.scalar()
+    except Exception:
+        current = None
+
+print(f"数据库版本信息:")
+print(f"  当前版本：{current or '未初始化'}")
+print(f"  最新版本：{head_revision}")
+if current == head_revision:
+    print(f"  状态：已是最新")
+else:
+    print(f"  状态：需要升级")
+PY
+)
+
 (cd "$ROOT_DIR/backend" && "$ROOT_DIR/.venv/bin/alembic" upgrade head)
 TEST_DATABASE_URL="$(cd "$ROOT_DIR/backend" && "$ROOT_DIR/.venv/bin/python" - <<'PY'
 from sqlalchemy.engine import make_url
@@ -77,6 +105,34 @@ finally:
     connection.close()
 PY
 )
+(cd "$ROOT_DIR/backend" && DATABASE_URL="$TEST_DATABASE_URL" "$ROOT_DIR/.venv/bin/python" - <<'PY'
+from sqlalchemy import create_engine, text
+from app.config import get_settings
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
+engine = create_engine(get_settings().database_url)
+alembic_cfg = Config("alembic.ini")
+script = ScriptDirectory.from_config(alembic_cfg)
+head_revision = script.get_current_head()
+
+with engine.connect() as conn:
+    try:
+        result = conn.execute(text("SELECT version_num FROM alembic_version"))
+        current = result.scalar()
+    except Exception:
+        current = None
+
+print(f"测试数据库版本信息:")
+print(f"  当前版本：{current or '未初始化'}")
+print(f"  最新版本：{head_revision}")
+if current == head_revision:
+    print(f"  状态：已是最新")
+else:
+    print(f"  状态：需要升级")
+PY
+)
+
 (cd "$ROOT_DIR/backend" && DATABASE_URL="$TEST_DATABASE_URL" "$ROOT_DIR/.venv/bin/alembic" upgrade head)
 export TEST_DATABASE_URL
 

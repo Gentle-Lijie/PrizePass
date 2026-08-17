@@ -3,11 +3,7 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 
 import { api, ApiError } from '@/api/client'
-import type {
-  NotificationJobRecord,
-  NotificationRoutingRecord,
-  NotificationTemplateRecord,
-} from '@/api/types'
+import type { NotificationJobRecord, NotificationRoutingRecord, NotificationTemplateRecord } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 
 interface SettingsResponse {
@@ -76,10 +72,7 @@ function escapeHtml(value: string) {
     '"': '&quot;',
     "'": '&#x27;',
   }
-  return value.replace(
-    /[&<>"']/g,
-    (character) => entities[character] ?? character,
-  )
+  return value.replace(/[&<>"']/g, (character) => entities[character] ?? character)
 }
 
 function openHtmlPreview(template: NotificationTemplateRecord) {
@@ -120,8 +113,7 @@ async function load() {
     Object.assign(configuration, settings.configuration)
     jobs.value = recentJobs
   } catch (caught) {
-    if (caught instanceof ApiError && caught.status === 401)
-      await router.replace('/admin')
+    if (caught instanceof ApiError && caught.status === 401) await router.replace('/admin')
     else error.value = caught instanceof Error ? caught.message : '加载失败'
   }
 }
@@ -161,13 +153,10 @@ async function saveRouting() {
   busy.value = true
   error.value = ''
   try {
-    const response = await api<{ routing: NotificationRoutingRecord[] }>(
-      '/api/admin/notification-routing',
-      {
-        method: 'PUT',
-        body: JSON.stringify({ routes: routing.value }),
-      },
-    )
+    const response = await api<{ routing: NotificationRoutingRecord[] }>('/api/admin/notification-routing', {
+      method: 'PUT',
+      body: JSON.stringify({ routes: routing.value }),
+    })
     routing.value = response.routing
     notice.value = '通知路由已保存，仅影响之后创建的通知任务'
   } catch (caught) {
@@ -249,20 +238,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 
 <template>
   <main class="mx-auto max-w-6xl p-6 md:p-10">
-    <RouterLink
-      to="/admin/events"
-      class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+    <RouterLink to="/admin/events" class="text-sm text-blue-600 hover:underline dark:text-blue-400"
       >← 返回比赛列表</RouterLink
     >
     <h1 class="mt-4 text-3xl font-bold">通知设置</h1>
     <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
-      SMTP、email-poster 与 Webhook 共用任务状态和重试逻辑；邮件同时保留纯文本与
-      HTML 正文。
+      SMTP、email-poster 与 Webhook 共用任务状态和重试逻辑；邮件同时保留纯文本与 HTML 正文。
     </p>
-    <p
-      v-if="error"
-      class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300"
-    >
+    <p v-if="error" class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
       {{ error }}
     </p>
     <p
@@ -291,8 +274,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
               : 'bg-slate-100 text-slate-500 dark:text-slate-400 dark:bg-slate-800 dark:text-slate-400'
           "
-          >运营邮箱
-          {{ configuration.notification_email ? '已配置' : '未配置' }}</span
+          >运营邮箱 {{ configuration.notification_email ? '已配置' : '未配置' }}</span
         >
         <span
           class="rounded-full px-3 py-1 text-sm"
@@ -310,18 +292,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
               : 'bg-slate-100 text-slate-500 dark:text-slate-400 dark:bg-slate-800 dark:text-slate-400'
           "
-          >email-poster
-          {{ configuration.email_poster ? '已配置' : '未配置' }}</span
+          >email-poster {{ configuration.email_poster ? '已配置' : '未配置' }}</span
         >
       </div>
       <div class="mt-5 flex flex-wrap items-end gap-3">
         <!-- <label class="text-sm font-medium">测试收件地址</label> -->
-        <input
-          v-model="email"
-          class="field mt-1 w-full sm:w-72"
-          type="email"
-          placeholder="name@example.com"
-        /><button
+        <input v-model="email" class="field mt-1 w-full sm:w-72" type="email" placeholder="name@example.com" /><button
           class="btn-secondary w-full sm:w-auto"
           :disabled="busy || !email"
           @click="testEmail"
@@ -333,11 +309,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
           @click="testEmailPoster"
         >
           创建 email-poster 测试任务</button
-        ><button
-          class="btn-secondary w-full sm:w-auto"
-          :disabled="busy || !configuration.webhook"
-          @click="testWebhook"
-        >
+        ><button class="btn-secondary w-full sm:w-auto" :disabled="busy || !configuration.webhook" @click="testWebhook">
           创建 Webhook 测试任务
         </button>
       </div>
@@ -352,25 +324,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
           </p>
         </div>
         <div class="flex gap-2">
-          <button
-            class="btn-secondary"
-            type="button"
-            :disabled="busy"
-            @click="refreshForm"
-          >
-            刷新表单</button
-          ><button class="btn-primary" :disabled="busy" @click="saveRouting">
-            保存通知路由
-          </button>
+          <button class="btn-secondary" type="button" :disabled="busy" @click="refreshForm">刷新表单</button
+          ><button class="btn-primary" :disabled="busy" @click="saveRouting">保存通知路由</button>
         </div>
       </div>
       <div
         class="mt-4 overflow-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
       >
         <table class="w-full min-w-[920px] text-left text-sm">
-          <thead
-            class="bg-slate-50 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300"
-          >
+          <thead class="bg-slate-50 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
             <tr>
               <th class="p-4">通知场景</th>
               <th class="p-4 text-center">SMTP → 获奖人</th>
@@ -442,50 +404,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
     <section class="mt-8">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-xl font-bold">通知模板</h2>
-        <button
-          class="btn-secondary"
-          type="button"
-          :disabled="busy"
-          @click="refreshForm"
-        >
-          刷新表单
-        </button>
+        <button class="btn-secondary" type="button" :disabled="busy" @click="refreshForm">刷新表单</button>
       </div>
-      <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
-        纯文本正文始终保留；HTML 留空时邮件自动退回纯文本。
-      </p>
+      <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">纯文本正文始终保留；HTML 留空时邮件自动退回纯文本。</p>
       <div class="mt-4 grid gap-4">
-        <article
-          v-for="template in templates"
-          :key="template.event_type"
-          class="card"
-        >
+        <article v-for="template in templates" :key="template.event_type" class="card">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 class="font-semibold">
               {{ eventLabels[template.event_type] }}
             </h3>
-            <button
-              class="btn-primary"
-              :disabled="busy"
-              @click="saveTemplate(template)"
-            >
-              保存模板
-            </button>
+            <button class="btn-primary" :disabled="busy" @click="saveTemplate(template)">保存模板</button>
           </div>
-          <label
-            class="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-300"
-            >纯文本正文</label
-          >
-          <textarea
-            v-model="template.text_template"
-            class="field mt-2 min-h-28 font-mono text-sm"
-            maxlength="20000"
-          />
+          <label class="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-300">纯文本正文</label>
+          <textarea v-model="template.text_template" class="field mt-2 min-h-28 font-mono text-sm" maxlength="20000" />
           <div class="mt-4 flex items-center justify-between gap-3">
-            <label
-              class="block text-sm font-medium text-slate-700 dark:text-slate-300"
-              >HTML 正文（可选）</label
-            >
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">HTML 正文（可选）</label>
             <button
               class="btn-secondary px-3 py-1.5 text-sm"
               type="button"
@@ -516,14 +449,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
     <section class="mt-8">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-xl font-bold">最近通知任务</h2>
-        <button
-          class="btn-secondary"
-          type="button"
-          :disabled="busy"
-          @click="refreshForm"
-        >
-          刷新状态
-        </button>
+        <button class="btn-secondary" type="button" :disabled="busy" @click="refreshForm">刷新状态</button>
       </div>
       <div
         class="mt-4 overflow-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
@@ -548,10 +474,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
               <td class="p-4">{{ job.destination }}</td>
               <td class="p-4">{{ job.status }}</td>
               <td class="p-4">{{ job.attempt_count }}</td>
-              <td
-                class="max-w-xs truncate p-4 text-red-600 dark:text-red-400"
-                :title="job.last_error ?? ''"
-              >
+              <td class="max-w-xs truncate p-4 text-red-600 dark:text-red-400" :title="job.last_error ?? ''">
                 {{ job.last_error || '—' }}
               </td>
               <td class="p-4">
@@ -569,12 +492,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
               </td>
             </tr>
             <tr v-if="jobs.length === 0">
-              <td
-                colspan="8"
-                class="p-10 text-center text-slate-500 dark:text-slate-400"
-              >
-                暂无通知任务
-              </td>
+              <td colspan="8" class="p-10 text-center text-slate-500 dark:text-slate-400">暂无通知任务</td>
             </tr>
           </tbody>
         </table>
@@ -599,16 +517,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
           >
             <div>
               <h2 class="font-semibold">{{ preview.title }} · HTML 预览</h2>
-              <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                当前未保存内容，模板变量已替换为示例数据。
-              </p>
+              <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">当前未保存内容，模板变量已替换为示例数据。</p>
             </div>
-            <button
-              class="btn-secondary px-3 py-1.5 text-sm"
-              type="button"
-              :autofocus="true"
-              @click="closePreview"
-            >
+            <button class="btn-secondary px-3 py-1.5 text-sm" type="button" :autofocus="true" @click="closePreview">
               关闭
             </button>
           </header>

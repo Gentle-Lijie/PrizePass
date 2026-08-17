@@ -40,6 +40,17 @@ class RedemptionStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class PurchaseOrderStatus(StrEnum):
+    DRAFT = "draft"
+    REIMBURSED = "reimbursed"
+    CANCELLED = "cancelled"
+
+
+class PurchaseAttachmentKind(StrEnum):
+    TRANSACTION_SCREENSHOT = "transaction_screenshot"
+    INVOICE_PDF = "invoice_pdf"
+
+
 class NotificationChannel(StrEnum):
     EMAIL = "email"
     WEBHOOK = "webhook"
@@ -91,10 +102,11 @@ class Event(Base):
 
 
 class Prize(Base):
+    """Global prize pool shared by every event (event_id was dropped in 0014)."""
+
     __tablename__ = "prizes"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    event_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("events.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     image: Mapped[str] = mapped_column(Text, nullable=False)
     jd_url: Mapped[str | None] = mapped_column(Text)
@@ -122,6 +134,8 @@ class Winner(Base):
     identity_key: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
+    # Award title (e.g. 一等奖) surfaced in code_issued emails and exports.
+    award_name: Mapped[str | None] = mapped_column(String(200))
     quota: Mapped[int] = uint()
     created_at: Mapped[datetime] = created_at()
 
@@ -237,3 +251,71 @@ class NotificationJob(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
+
+
+class PurchaseOrder(Base):
+    """Reimbursement purchase order grouping matched prizes with proofs."""
+
+    __tablename__ = "purchase_orders"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    order_no: Mapped[str] = mapped_column(String(24), nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    total_value: Mapped[int] = mapped_column(INTEGER(unsigned=True), nullable=False, server_default="0")
+    status: Mapped[PurchaseOrderStatus] = mapped_column(
+        enum_type(PurchaseOrderStatus, "purchase_order_status"), nullable=False
+    )
+    reimbursed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class PurchaseOrderItem(Base):
+    __tablename__ = "purchase_order_items"
+    __table_args__ = (UniqueConstraint("purchase_order_id", "prize_id", name="uq_purchase_order_prize"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    purchase_order_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("purchase_orders.id"), nullable=False, index=True
+    )
+    prize_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("prizes.id"), nullable=False, index=True)
+    prize_name_snapshot: Mapped[str] = mapped_column(String(200), nullable=False)
+    unit_value_snapshot: Mapped[int] = uint()
+    quantity: Mapped[int] = uint()
+    line_value: Mapped[int] = uint()
+
+
+class PurchaseOrderAttachment(Base):
+    __tablename__ = "purchase_order_attachments"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    purchase_order_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("purchase_orders.id"), nullable=False, index=True
+    )
+    kind: Mapped[PurchaseAttachmentKind] = mapped_column(
+        enum_type(PurchaseAttachmentKind, "purchase_attachment_kind"), nullable=False
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    byte_size: Mapped[int] = uint()
+    created_at: Mapped[datetime] = created_at()
+
+
+class EventPrizeAvailability(Base):
+    """Maps which prizes from the global pool are available for each event.
+
+    The prize pool is global (all prizes), but each event selects a subset
+    of prizes that its winners can redeem. This table tracks that selection.
+    """
+
+    __tablename__ = "event_prize_availability"
+
+    event_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("events.id"), primary_key=True
+    )
+    prize_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("prizes.id"), primary_key=True
+    )
+    created_at: Mapped[datetime] = created_at()

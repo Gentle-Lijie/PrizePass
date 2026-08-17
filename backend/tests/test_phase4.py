@@ -34,7 +34,7 @@ def setup_redeemable(quota: int, prize_specs: list[tuple[str, int, int]]) -> tup
     prize_ids = []
     for name, redeem_value, stock in prize_specs:
         response = client.post(
-            f"/api/admin/events/{event_id}/prizes",
+            f"/api/admin/prizes",
             headers=ADMIN,
             json={
                 "name": name,
@@ -46,7 +46,14 @@ def setup_redeemable(quota: int, prize_specs: list[tuple[str, int, int]]) -> tup
             },
         )
         assert response.status_code == 201, response.text
-        prize_ids.append(response.json()["id"])
+        prize_id = response.json()["id"]
+        prize_ids.append(prize_id)
+        # Make this prize available for the event.
+        add_response = client.post(
+            f"/api/admin/events/{event_id}/prizes/{prize_id}",
+            headers=ADMIN,
+        )
+        assert add_response.status_code == 201, add_response.text
     stream = io.StringIO(newline="")
     writer = csv.writer(stream)
     writer.writerow(["name", "email", "quota"])
@@ -139,7 +146,7 @@ def test_public_prizes_hide_off_shelf_and_batch_delete_skips_referenced() -> Non
     response = submit(code, [{"prize_id": redeemable, "quantity": 1}])
     assert response.status_code == 201, response.text
     result = client.post(
-        f"/api/admin/events/{event_id}/prizes/batch-delete",
+        f"/api/admin/prizes/batch-delete",
         headers=ADMIN,
         json={"ids": [redeemable, deletable]},
     )

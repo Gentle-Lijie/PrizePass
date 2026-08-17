@@ -2,12 +2,7 @@
 import { inject, reactive, ref } from 'vue'
 
 import { api, downloadAdmin } from '@/api/client'
-import type {
-  NotificationChannel,
-  WinnerCreate,
-  WinnerImportPreview,
-  WinnerRecord,
-} from '@/api/types'
+import type { NotificationChannel, WinnerCreate, WinnerImportPreview, WinnerRecord } from '@/api/types'
 import { eventTabContextKey } from '@/components/event/eventContext'
 
 const context = inject(eventTabContextKey)!
@@ -22,6 +17,7 @@ const winnerForm = reactive<WinnerCreate>({
   external_id: '',
   name: '',
   email: '',
+  award_name: null,
   quota: 1,
 })
 
@@ -37,10 +33,10 @@ async function validateWinnerImport(file: File | undefined) {
   const data = new FormData()
   data.append('file', file)
   try {
-    winnerImportPreview.value = await api<WinnerImportPreview>(
-      `/api/admin/events/${eventId}/winners/import/validate`,
-      { method: 'POST', body: data },
-    )
+    winnerImportPreview.value = await api<WinnerImportPreview>(`/api/admin/events/${eventId}/winners/import/validate`, {
+      method: 'POST',
+      body: data,
+    })
   } catch (caught) {
     showError(caught, '校验失败')
   }
@@ -52,10 +48,10 @@ async function confirmWinnerImport() {
   data.append('file', winnerImportFile.value)
   busy.value = true
   try {
-    const result = await api<{ imported: number }>(
-      `/api/admin/events/${eventId}/winners/import/confirm`,
-      { method: 'POST', body: data },
-    )
+    const result = await api<{ imported: number }>(`/api/admin/events/${eventId}/winners/import/confirm`, {
+      method: 'POST',
+      body: data,
+    })
     notice.value = `已导入 ${result.imported} 名获奖人并生成兑换码`
     winnerImportFile.value = null
     winnerImportPreview.value = null
@@ -68,7 +64,7 @@ async function confirmWinnerImport() {
 }
 
 function openWinnerForm() {
-  Object.assign(winnerForm, { external_id: '', name: '', email: '', quota: 1 })
+  Object.assign(winnerForm, { external_id: '', name: '', email: '', award_name: null, quota: 1 })
   showWinnerForm.value = true
 }
 
@@ -77,6 +73,7 @@ async function saveWinner() {
     external_id: (winnerForm.external_id ?? '').trim() || null,
     name: winnerForm.name.trim(),
     email: winnerForm.email.trim(),
+    award_name: (winnerForm.award_name ?? '').trim() || null,
     quota: Number(winnerForm.quota),
   }
   busy.value = true
@@ -145,10 +142,7 @@ async function resendNotification() {
 }
 
 async function adjustQuota(winner: WinnerRecord) {
-  const value = window.prompt(
-    `请输入 ${winner.name} 的新额度`,
-    String(winner.quota),
-  )
+  const value = window.prompt(`请输入 ${winner.name} 的新额度`, String(winner.quota))
   if (value === null) return
   const quota = Number(value)
   if (!Number.isInteger(quota) || quota <= 0) {
@@ -172,12 +166,7 @@ async function adjustQuota(winner: WinnerRecord) {
 }
 
 async function revokeCode(winner: WinnerRecord) {
-  if (
-    !window.confirm(
-      `确认撤销 ${winner.name} 的兑换码 ${winner.code}？撤销后该码将无法兑换。`,
-    )
-  )
-    return
+  if (!window.confirm(`确认撤销 ${winner.name} 的兑换码 ${winner.code}？撤销后该码将无法兑换。`)) return
   busy.value = true
   error.value = ''
   try {
@@ -190,6 +179,25 @@ async function revokeCode(winner: WinnerRecord) {
     busy.value = false
   }
 }
+
+async function editAwardName(winner: WinnerRecord) {
+  const value = window.prompt(`请输入 ${winner.name} 的奖项名称（留空清除）`, winner.award_name || '')
+  if (value === null) return
+  busy.value = true
+  error.value = ''
+  try {
+    await api(`/api/admin/winners/${winner.id}/award`, {
+      method: 'PUT',
+      body: JSON.stringify({ award_name: value.trim() || null }),
+    })
+    notice.value = `已更新 ${winner.name} 的奖项名称`
+    await load()
+  } catch (caught) {
+    showError(caught, '更新奖项名称失败')
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -198,10 +206,7 @@ async function revokeCode(winner: WinnerRecord) {
       <button
         class="btn-secondary"
         @click="
-          downloadAdmin(
-            `/api/admin/events/${eventId}/winners/import/template?format=csv`,
-            'winners-template.csv',
-          )
+          downloadAdmin(`/api/admin/events/${eventId}/winners/import/template?format=csv`, 'winners-template.csv')
         "
       >
         CSV 模板
@@ -209,33 +214,20 @@ async function revokeCode(winner: WinnerRecord) {
       <button
         class="btn-secondary"
         @click="
-          downloadAdmin(
-            `/api/admin/events/${eventId}/winners/import/template?format=xlsx`,
-            'winners-template.xlsx',
-          )
+          downloadAdmin(`/api/admin/events/${eventId}/winners/import/template?format=xlsx`, 'winners-template.xlsx')
         "
       >
         XLSX 模板
       </button>
       <button
         class="btn-secondary"
-        @click="
-          downloadAdmin(
-            `/api/admin/events/${eventId}/winners/export?format=csv`,
-            'winners.csv',
-          )
-        "
+        @click="downloadAdmin(`/api/admin/events/${eventId}/winners/export?format=csv`, 'winners.csv')"
       >
         导出 CSV
       </button>
       <button
         class="btn-secondary"
-        @click="
-          downloadAdmin(
-            `/api/admin/events/${eventId}/winners/export?format=xlsx`,
-            'winners.xlsx',
-          )
-        "
+        @click="downloadAdmin(`/api/admin/events/${eventId}/winners/export?format=xlsx`, 'winners.xlsx')"
       >
         导出 XLSX
       </button>
@@ -244,29 +236,17 @@ async function revokeCode(winner: WinnerRecord) {
           class="hidden"
           type="file"
           accept=".csv,.xlsx"
-          @change="
-            validateWinnerImport(
-              ($event.target as HTMLInputElement).files?.[0],
-            )
-          "
+          @change="validateWinnerImport(($event.target as HTMLInputElement).files?.[0])"
       /></label>
-      <button class="btn-secondary" @click="openWinnerForm()">
-        添加获奖人
-      </button>
+      <button class="btn-secondary" @click="openWinnerForm()">添加获奖人</button>
     </div>
     <div v-if="winnerImportPreview" class="card mt-4">
       <h3 class="font-semibold">
         导入预览 · {{ winnerImportPreview.count }} 人 · quota 合计
         {{ winnerImportPreview.quota_total }}
       </h3>
-      <ul
-        v-if="winnerImportPreview.errors.length"
-        class="mt-3 space-y-1 text-sm text-red-700 dark:text-red-300"
-      >
-        <li
-          v-for="issue in winnerImportPreview.errors"
-          :key="`${issue.row}-${issue.field}-${issue.message}`"
-        >
+      <ul v-if="winnerImportPreview.errors.length" class="mt-3 space-y-1 text-sm text-red-700 dark:text-red-300">
+        <li v-for="issue in winnerImportPreview.errors" :key="`${issue.row}-${issue.field}-${issue.message}`">
           第 {{ issue.row }} 行 · {{ issue.field }}：{{ issue.message }}
         </li>
       </ul>
@@ -294,24 +274,17 @@ async function revokeCode(winner: WinnerRecord) {
           </tbody>
         </table>
       </div>
-      <button
-        class="btn-primary mt-4"
-        :disabled="!winnerImportPreview.valid || busy"
-        @click="confirmWinnerImport"
-      >
+      <button class="btn-primary mt-4" :disabled="!winnerImportPreview.valid || busy" @click="confirmWinnerImport">
         确认全部导入并发码
       </button>
     </div>
-    <div
-      class="mt-5 overflow-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
-    >
+    <div class="mt-5 overflow-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
       <table class="w-full min-w-[1180px] text-left text-sm">
-        <thead
-          class="bg-slate-50 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300"
-        >
+        <thead class="bg-slate-50 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
           <tr>
             <th class="p-4">姓名</th>
             <th class="p-4">邮箱</th>
+            <th class="p-4">奖项</th>
             <th class="p-4">额度</th>
             <th class="p-4">兑换码</th>
             <th class="p-4">码状态</th>
@@ -324,12 +297,18 @@ async function revokeCode(winner: WinnerRecord) {
           <tr v-for="winner in winners" :key="winner.id" class="border-t">
             <td class="p-4 font-medium">{{ winner.name }}</td>
             <td class="p-4">{{ winner.email }}</td>
+            <td class="p-4">
+              <span
+                v-if="winner.award_name"
+                class="rounded bg-blue-50 px-2 py-1 text-sm text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+              >
+                {{ winner.award_name }}
+              </span>
+              <span v-else class="text-slate-400">—</span>
+            </td>
             <td class="p-4">{{ winner.quota }}</td>
             <td class="p-4">
-              <button
-                class="font-mono font-semibold text-blue-600 dark:text-blue-400"
-                @click="copyCode(winner.code)"
-              >
+              <button class="font-mono font-semibold text-blue-600 dark:text-blue-400" @click="copyCode(winner.code)">
                 {{ winner.code }}
               </button>
             </td>
@@ -338,13 +317,17 @@ async function revokeCode(winner: WinnerRecord) {
               {{ notificationStatusLabel(winner.email_notification_status) }}
             </td>
             <td class="p-4">
-              {{
-                notificationStatusLabel(winner.webhook_notification_status)
-              }}
+              {{ notificationStatusLabel(winner.webhook_notification_status) }}
             </td>
             <td class="whitespace-nowrap p-4 text-right">
               <button
-                class="text-blue-600 dark:text-blue-400 disabled:text-slate-300"
+                class="text-purple-600 dark:text-purple-400 disabled:text-slate-300"
+                :disabled="busy"
+                @click="editAwardName(winner)"
+              >
+                编辑奖项</button
+              ><button
+                class="ml-4 text-blue-600 dark:text-blue-400 disabled:text-slate-300"
                 :disabled="winner.code_status !== 'issued' || busy"
                 @click="openResend(winner)"
               >
@@ -365,10 +348,7 @@ async function revokeCode(winner: WinnerRecord) {
             </td>
           </tr>
           <tr v-if="winners.length === 0">
-            <td
-              colspan="8"
-              class="p-10 text-center text-slate-500 dark:text-slate-400"
-            >
+            <td colspan="9" class="p-10 text-center text-slate-500 dark:text-slate-400">
               暂无获奖人，请先下载模板并导入
             </td>
           </tr>
@@ -388,43 +368,32 @@ async function revokeCode(winner: WinnerRecord) {
         </div>
         <div class="mt-5 grid gap-4">
           <label class="text-sm font-medium"
-            >姓名<input
-              v-model="winnerForm.name"
-              class="field mt-1"
-              maxlength="100"
-              required
+            >姓名<input v-model="winnerForm.name" class="field mt-1" maxlength="100" required
           /></label>
           <label class="text-sm font-medium"
-            >邮箱<input
-              v-model="winnerForm.email"
-              class="field mt-1"
-              type="email"
-              maxlength="320"
-              required
+            >邮箱<input v-model="winnerForm.email" class="field mt-1" type="email" maxlength="320" required
           /></label>
           <label class="text-sm font-medium"
-            >额度<input
-              v-model.number="winnerForm.quota"
-              class="field mt-1"
-              type="number"
-              min="1"
-              step="1"
-              required
-          /></label>
-          <label class="text-sm font-medium"
-            >external_id（选填）<input
-              v-model="winnerForm.external_id"
+            >奖项名称（选填）<input
+              v-model="winnerForm.award_name"
               class="field mt-1"
               maxlength="200"
-            /><span
+              placeholder="如 一等奖、最佳创意奖"
+            /><span class="mt-1 block text-xs font-normal text-slate-500 dark:text-slate-400"
+              >奖项名称会显示在兑换码发放邮件中</span
+            ></label
+          >
+          <label class="text-sm font-medium"
+            >额度<input v-model.number="winnerForm.quota" class="field mt-1" type="number" min="1" step="1" required
+          /></label>
+          <label class="text-sm font-medium"
+            >external_id（选填）<input v-model="winnerForm.external_id" class="field mt-1" maxlength="200" /><span
               class="mt-1 block text-xs font-normal text-slate-500 dark:text-slate-400"
               >留空则以邮箱作为去重标识</span
             ></label
           >
         </div>
-        <button class="btn-primary mt-6 w-full" :disabled="busy">
-          添加并发码
-        </button>
+        <button class="btn-primary mt-6 w-full" :disabled="busy">添加并发码</button>
       </form>
     </div>
     <div
@@ -444,37 +413,17 @@ async function revokeCode(winner: WinnerRecord) {
         </div>
         <fieldset class="mt-5">
           <legend class="text-sm font-medium">选择通知渠道</legend>
-          <div
-            class="mt-3 grid gap-3 rounded-lg bg-slate-50 p-4 text-sm dark:bg-slate-800"
-          >
+          <div class="mt-3 grid gap-3 rounded-lg bg-slate-50 p-4 text-sm dark:bg-slate-800">
             <label class="flex items-center gap-2"
-              ><input
-                v-model="notificationChannels"
-                type="checkbox"
-                value="email"
-              />
-              SMTP 邮件</label
+              ><input v-model="notificationChannels" type="checkbox" value="email" /> SMTP 邮件</label
             ><label class="flex items-center gap-2"
-              ><input
-                v-model="notificationChannels"
-                type="checkbox"
-                value="email_poster"
-              />
-              Email Poster</label
+              ><input v-model="notificationChannels" type="checkbox" value="email_poster" /> Email Poster</label
             ><label class="flex items-center gap-2"
-              ><input
-                v-model="notificationChannels"
-                type="checkbox"
-                value="webhook"
-              />
-              Webhook</label
+              ><input v-model="notificationChannels" type="checkbox" value="webhook" /> Webhook</label
             >
           </div>
         </fieldset>
-        <button
-          class="btn-primary mt-6 w-full"
-          :disabled="busy || notificationChannels.length === 0"
-        >
+        <button class="btn-primary mt-6 w-full" :disabled="busy || notificationChannels.length === 0">
           创建通知任务
         </button>
       </form>

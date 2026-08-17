@@ -3,7 +3,7 @@ from typing import Annotated, Any
 
 from email_validator import EmailNotValidError, validate_email
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
-from pydantic import Field
+from pydantic import Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -48,10 +48,19 @@ router = APIRouter(
 DbSession = Annotated[Session, Depends(get_db)]
 WINNER_HEADERS = ["name", "email", "quota"]
 WINNER_HEADERS_EXTERNAL = ["external_id", "name", "email", "quota"]
+WINNER_HEADERS_AWARD = ["name", "email", "quota", "award_name"]
+WINNER_HEADERS_EXTERNAL_AWARD = ["external_id", "name", "email", "quota", "award_name"]
+WINNER_IMPORT_HEADERS = (
+    WINNER_HEADERS,
+    WINNER_HEADERS_EXTERNAL,
+    WINNER_HEADERS_AWARD,
+    WINNER_HEADERS_EXTERNAL_AWARD,
+)
 WINNER_EXPORT_HEADERS = [
     "external_id",
     "name",
     "email",
+    "award_name",
     "quota",
     "code",
     "code_status",
@@ -70,11 +79,26 @@ class QuotaUpdateRequest(StrictModel):
     quota: Annotated[int, Field(gt=0, le=4_294_967_295)]
 
 
+class AwardUpdateRequest(StrictModel):
+    award_name: Annotated[str | None, Field(default=None, max_length=200)] = None
+
+    @field_validator("award_name")
+    @classmethod
+    def normalize_award_name(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
 class WinnerCreate(StrictModel):
     external_id: Annotated[str | None, Field(default=None, max_length=200)] = None
     name: Annotated[str, Field(min_length=1, max_length=100)]
     email: Annotated[str, Field(min_length=3, max_length=320)]
     quota: Annotated[int, Field(gt=0, le=4_294_967_295)]
+    award_name: Annotated[str | None, Field(default=None, max_length=200)] = None
+
+    @field_validator("award_name")
+    @classmethod
+    def normalize_award_name(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
 
 
 def normalize_email(value: Any) -> str:
@@ -90,15 +114,15 @@ def validate_winner_table(db: Session, event_id: int, filename: str, content: by
         table = read_table(filename, content)
     except ValueError as exc:
         return {"valid": False, "rows": [], "errors": [{"row": 0, "field": "file", "message": str(exc)}], "count": 0, "quota_total": 0}
-    if table.headers not in (WINNER_HEADERS, WINNER_HEADERS_EXTERNAL):
+    if table.headers not in WINNER_IMPORT_HEADERS:
         return {
             "valid": False,
             "rows": [],
-            "errors": [{"row": 1, "field": "header", "message": "表头必须为 name,email,quota 或 external_id,name,email,quota"}],
+            "errors": [{"row": 1, "field": "header", "message": "表头必须为 name,email,quota[,award_name] 或 external_id,name,email,quota[,award_name]"}],
             "count": 0,
             "quota_total": 0,
         }
-    has_external = table.headers == WINNER_HEADERS_EXTERNAL
+    has_external = table.headers in (WINNER_HEADERS_EXTERNAL, WINNER_HEADERS_EXTERNAL_AWARD)
     rows: list[dict] = []
     errors: list[dict] = []
     emails_seen: dict[str, int] = {}
@@ -110,7 +134,11 @@ def validate_winner_table(db: Session, event_id: int, filename: str, content: by
         source = dict(zip(table.headers, values[: len(table.headers)], strict=True))
         external_id = str(source.get("external_id") or "").strip() or None if has_external else None
         name = str(source.get("name") or "").strip()
-        normalized: dict[str, Any] = {"external_id": external_id, "name": name}
+        award_name = str(source.get("award_name") or "").strip() or None
+        if award_name and len(award_name) > 200:
+            errors.append({"row": row_no, "field": "award_name", "message": "奖项名称不能超过 200 字符"})
+            award_name = None
+        normalized: dict[str, Any] = {"external_id": external_id, "name": name, "award_name": award_name}
         if not name:
             errors.append({"row": row_no, "field": "name", "message": "姓名不能为空"})
         elif len(name) > 100:
@@ -178,7 +206,7 @@ def generate_codes(db: Session, count: int) -> list[str]:
 @router.get("/events/{event_id}/winners/import/template")
 def winner_template(event_id: int, db: DbSession, format: str = Query(pattern="^(csv|xlsx)$")) -> Response:
     get_event_or_404(db, event_id)
-    content, media_type = template_bytes(WINNER_HEADERS_EXTERNAL, format)
+    content, media_type = template_bytes(WINNER_HEADERS_EXTERNAL_AWARD, format)
     return Response(content, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="winners-template.{format}"'})
 
 
@@ -196,6 +224,7 @@ def issue_winner(
     email: str,
     quota: int,
     external_id: str | None,
+    award_name: str | None = None,
 ) -> Winner:
     """创建获奖人、签发兑换码并排发 code_issued 通知。调用方负责 commit。"""
     identity_key = f"external:{external_id}" if external_id else f"email:{email}"
@@ -213,6 +242,7 @@ def issue_winner(
         external_id=external_id,
         name=name,
         email=email,
+        award_name=award_name,
         quota=quota,
     )
     db.add(winner)
@@ -254,6 +284,7 @@ async def confirm_winners(event_id: int, db: DbSession, file: Annotated[UploadFi
             email=row["email"],
             quota=row["quota"],
             external_id=row["external_id"],
+            award_name=row.get("award_name"),
         )
     maybe_open_event(event)
     db.commit()
@@ -275,6 +306,7 @@ def add_winner(event_id: int, payload: WinnerCreate, db: DbSession) -> dict:
         email=email,
         quota=payload.quota,
         external_id=external_id,
+        award_name=payload.award_name,
     )
     maybe_open_event(event)
     db.commit()
@@ -303,6 +335,7 @@ def winner_rows(db: Session, event_id: int) -> list[dict]:
             "external_id": winner.external_id,
             "name": winner.name,
             "email": winner.email,
+            "award_name": winner.award_name,
             "quota": winner.quota,
             "code": code.code,
             "code_status": code.status.value,
@@ -389,6 +422,16 @@ def update_winner_quota(
     code.quota = payload.quota
     db.commit()
     return {"quota": payload.quota}
+
+
+@router.put("/winners/{winner_id}/award")
+def update_winner_award(
+    winner_id: int, payload: AwardUpdateRequest, db: DbSession
+) -> dict:
+    winner, _ = winner_and_code_or_404(db, winner_id)
+    winner.award_name = payload.award_name
+    db.commit()
+    return {"award_name": winner.award_name}
 
 
 @router.post("/winners/{winner_id}/code/revoke")

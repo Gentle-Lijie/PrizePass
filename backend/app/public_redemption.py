@@ -14,6 +14,7 @@ from .http import fail
 from .models import (
     CodeStatus,
     Event,
+    EventPrizeAvailability,
     EventStatus,
     Prize,
     Redemption,
@@ -158,9 +159,16 @@ def redemption_context(db: DbSession, code_value: Annotated[str, Depends(code_he
 @router.get("/redemption/prizes")
 def redemption_prizes(db: DbSession, code_value: Annotated[str, Depends(code_header)]) -> list[dict]:
     code, event, _ = usable_code(db, code_value)
+    # Show only prizes that are active AND available for this specific event.
+    available_prize_ids = select(EventPrizeAvailability.prize_id).where(
+        EventPrizeAvailability.event_id == event.id
+    )
     prizes = db.scalars(
         select(Prize)
-        .where(Prize.event_id == event.id, Prize.is_active == True)  # noqa: E712
+        .where(
+            Prize.is_active == True,  # noqa: E712
+            Prize.id.in_(available_prize_ids),
+        )
         # Tagged prizes first ordered by tag text (numeric prefix controls section
         # order), untagged prizes fall into the trailing default section.
         .order_by(Prize.tag.is_(None), Prize.tag, Prize.id)
@@ -220,8 +228,18 @@ def submit_redemption(
                     .with_for_update()
                 ).all()
             )
-            if len(prizes) != len(sorted_ids) or any(prize.event_id != event.id for prize in prizes):
-                fail(409, "invalid_prize", "购物篮包含不属于当前比赛的奖品")
+            if len(prizes) != len(sorted_ids) or any(not prize.is_active for prize in prizes):
+                fail(409, "invalid_prize", "购物篮包含无效或已下架的奖品")
+            # Validate that all selected prizes are available for this event.
+            available_for_event = set(
+                db.scalars(
+                    select(EventPrizeAvailability.prize_id).where(
+                        EventPrizeAvailability.event_id == event.id
+                    )
+                ).all()
+            )
+            if any(prize.id not in available_for_event for prize in prizes):
+                fail(409, "prize_not_available_for_event", "购物篮包含对此比赛不可用的奖品")
             total = sum(prize.redeem_value * quantities[prize.id] for prize in prizes)
             if total > code.quota:
                 fail(409, "quota_exceeded", "所选奖品总抵扣额度超过 quota")

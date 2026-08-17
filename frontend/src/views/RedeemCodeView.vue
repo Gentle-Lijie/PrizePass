@@ -34,18 +34,14 @@ async function verify() {
   } catch (caught) {
     auth.clearRedemptionCode()
     error.value =
-      caught instanceof ApiError
-        ? (codeErrorMessages[caught.code] ?? caught.message)
-        : '暂时无法连接服务器，请稍后重试'
+      caught instanceof ApiError ? (codeErrorMessages[caught.code] ?? caught.message) : '暂时无法连接服务器，请稍后重试'
   } finally {
     busy.value = false
   }
 }
 
 onMounted(async () => {
-  const queryCode = Array.isArray(route.query.code)
-    ? route.query.code[0]
-    : route.query.code
+  const queryCode = Array.isArray(route.query.code) ? route.query.code[0] : route.query.code
   if (!queryCode) return
   code.value = queryCode.trim().toUpperCase()
   await router.replace({ path: '/redeem' })
@@ -58,15 +54,9 @@ onMounted(async () => {
     class="grid min-h-screen place-items-center bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900"
   >
     <form class="card w-full max-w-md" @submit.prevent="verify">
-      <p
-        class="text-sm font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400"
-      >
-        PrizePass
-      </p>
+      <p class="text-sm font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">PrizePass</p>
       <h1 class="mt-2 text-3xl font-bold">兑换你的奖品</h1>
-      <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
-        请输入邮件中收到的 12 位兑换码。
-      </p>
+      <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">请输入邮件中收到的 12 位兑换码。</p>
       <label class="mt-6 block text-sm font-medium" for="code">兑换码</label>
       <input
         id="code"
@@ -77,17 +67,10 @@ onMounted(async () => {
         autocomplete="off"
         required
       />
-      <p
-        v-if="error"
-        class="mt-3 text-sm text-red-600 dark:text-red-400"
-        role="alert"
-      >
+      <p v-if="error" class="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">
         {{ error }}
       </p>
-      <button
-        class="btn-primary mt-4 w-full"
-        :disabled="busy || code.trim().length !== 12"
-      >
+      <button class="btn-primary mt-4 w-full" :disabled="busy || code.trim().length !== 12">
         {{ busy ? '验证中…' : '验证兑换码' }}
       </button>
     </form>

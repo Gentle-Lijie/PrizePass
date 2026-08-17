@@ -122,5 +122,5 @@ def test_xlsx_without_external_id_and_both_exports() -> None:
     assert xlsx_export.status_code == 200
     output = load_workbook(io.BytesIO(xlsx_export.content), read_only=True)
     values = list(output.active.values)
-    assert values[1][1:4] == ("陈晨", "chen@example.com", 250)
+    assert values[1][1:5] == ("陈晨", "chen@example.com", None, 250)
     output.close()

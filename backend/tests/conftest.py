@@ -19,10 +19,14 @@ os.environ["EMAIL_POSTER_POST_URL"] = ""
 
 from app.models import (  # noqa: E402
     Event,
+    EventPrizeAvailability,
     NotificationJob,
     NotificationRoutingRule,
     NotificationTemplate,
     Prize,
+    PurchaseOrder,
+    PurchaseOrderAttachment,
+    PurchaseOrderItem,
     Redemption,
     RedemptionCode,
     RedemptionItem,
@@ -44,10 +48,14 @@ def clean_database():
     with Session(test_engine) as session:
         for model in (
             NotificationJob,
+            PurchaseOrderAttachment,
+            PurchaseOrderItem,
+            PurchaseOrder,
             RedemptionItem,
             Redemption,
             RedemptionCode,
             Winner,
+            EventPrizeAvailability,  # Must be before Prize (FK constraint)
             Prize,
             Event,
         ):

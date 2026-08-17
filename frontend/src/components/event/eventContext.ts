@@ -1,12 +1,6 @@
 import type { InjectionKey, Ref } from 'vue'
 
-import type {
-  AdminRedemption,
-  EventRecord,
-  PrizeRecord,
-  PrizeSummary,
-  WinnerRecord,
-} from '@/api/types'
+import type { AdminRedemption, EventPrizeSummary, EventRecord, PrizeRecord, WinnerRecord } from '@/api/types'
 
 // Shared state provided by EventDetailView to its tab components.
 // Every write action in a tab still funnels through load() so all lists stay
@@ -15,7 +9,7 @@ export interface EventTabContext {
   eventId: number
   event: Ref<EventRecord | null>
   prizes: Ref<PrizeRecord[]>
-  prizeSummary: Ref<PrizeSummary>
+  prizeSummary: Ref<EventPrizeSummary>
   winners: Ref<WinnerRecord[]>
   redemptions: Ref<AdminRedemption[]>
   error: Ref<string>
@@ -28,5 +22,4 @@ export interface EventTabContext {
   refreshHooks: Set<() => void>
 }
 
-export const eventTabContextKey: InjectionKey<EventTabContext> =
-  Symbol('eventTabContext')
+export const eventTabContextKey: InjectionKey<EventTabContext> = Symbol('eventTabContext')

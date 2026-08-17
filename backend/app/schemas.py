@@ -132,7 +132,6 @@ class PrizeRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    event_id: int
     name: str
     image: str
     jd_url: str | None

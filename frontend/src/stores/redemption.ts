@@ -1,11 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-import type {
-  PublicPrize,
-  RedemptionContext,
-  RedemptionSuccess,
-} from '@/api/types'
+import type { PublicPrize, RedemptionContext, RedemptionSuccess } from '@/api/types'
 
 export interface CustomPrize {
   name: string

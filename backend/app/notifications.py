@@ -53,7 +53,7 @@ def default_routing_rules() -> list[tuple[str, NotificationChannel, Notification
     return rules
 
 DEFAULT_TEMPLATES = {
-    "code_issued": "{{winner_name}}，你的兑换码是 {{code}}，可用额度为 {{quota}}。请于 {{deadline}} 前访问 {{redemption_url}} 完成兑换。自提地点：{{pickup_location}}。{{pickup_instructions}}",
+    "code_issued": "{{winner_name}}，恭喜你在 {{event_name}} 中获得 {{award_name}}。你的兑换码是 {{code}}，可用额度为 {{quota}}。请于 {{deadline}} 前访问 {{redemption_url}} 完成兑换。自提地点：{{pickup_location}}。{{pickup_instructions}}",
     "redemption_submitted": "{{winner_name}} 已提交兑换单 {{order_no}}：{{items_summary}}。总抵扣 {{total_redeem_value}}，未使用额度 {{unused_quota}}，状态：{{status}}。",
     "redemption_ready": "{{winner_name}}，兑换单 {{order_no}} 已备货，请前往 {{pickup_location}} 领取。{{pickup_instructions}}",
     "redemption_picked_up": "兑换单 {{order_no}} 已领取。获奖人：{{winner_name}}；奖品：{{items_summary}}；状态：{{status}}。",
@@ -81,7 +81,7 @@ def html_document(title: str, body: str) -> str:
 DEFAULT_HTML_TEMPLATES = {
     "code_issued": html_document(
         "兑换码通知",
-        "<p>{{winner_name}}，恭喜你获得 <strong>{{event_name}}</strong> 的奖品兑换资格。</p>"
+        "<p>{{winner_name}}，恭喜你在 <strong>{{event_name}}</strong> 中获得 <strong>{{award_name}}</strong>，奖品兑换资格已开通。</p>"
         "<p>兑换码：<strong style=\"font-size:22px;color:#2563eb\">{{code}}</strong><br>"
         "可用额度：{{quota}}<br>截止时间：{{deadline}}</p>"
         "<p><a href=\"{{redemption_url}}\" style=\"display:inline-block;padding:12px 20px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px\">前往兑换</a></p>"
@@ -125,6 +125,7 @@ ALL_TEMPLATE_VARIABLES = {
     "winner_name",
     "winner_email",
     "event_name",
+    "award_name",
     "code",
     "quota",
     "redemption_url",
@@ -149,6 +150,7 @@ EVENT_VARIABLES = {
         "winner_name",
         "winner_email",
         "event_name",
+        "award_name",
         "code",
         "quota",
         "redemption_url",
@@ -237,10 +239,14 @@ def render_notification(
 
 def code_issued_context(winner: Winner, code: str, event) -> dict[str, str | int]:
     settings = get_settings()
+    # getattr keeps tests and ad-hoc callers working when the winner is a
+    # SimpleNamespace without the new award_name attribute.
+    award_name = getattr(winner, "award_name", None) or "奖项"
     return {
         "winner_name": winner.name,
         "winner_email": winner.email,
         "event_name": event.name,
+        "award_name": award_name,
         "code": code,
         "quota": winner.quota,
         "redemption_url": f"{settings.public_base_url.rstrip('/')}/redeem?{urlencode({'code': code})}",

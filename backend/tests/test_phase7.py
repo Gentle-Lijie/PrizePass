@@ -40,7 +40,7 @@ def test_purchase_summary_uses_snapshot_and_picked_up_status() -> None:
         json={**payload, "status": "active"},
     ).status_code == 200
     prize = client.post(
-        f"/api/admin/events/{event_id}/prizes",
+        f"/api/admin/prizes",
         headers=ADMIN,
         json={
             "name": "采购价奖品",
@@ -54,6 +54,12 @@ def test_purchase_summary_uses_snapshot_and_picked_up_status() -> None:
         },
     )
     assert prize.status_code == 201, prize.text
+    prize_id = prize.json()["id"]
+    # Make the prize available for this event.
+    assert client.post(
+        f"/api/admin/events/{event_id}/prizes/{prize_id}",
+        headers=ADMIN,
+    ).status_code == 201
 
     # Reuse the winner import path through a minimal CSV.
     csv_content = b"name,email,quota\nTest,winner@example.com,100\n"
@@ -72,18 +78,17 @@ def test_purchase_summary_uses_snapshot_and_picked_up_status() -> None:
     assert public_prizes.json()[0]["jd_url"] == "https://item.jd.com/100000000001.html"
 
     initial = client.get(
-        f"/api/admin/events/{event_id}/prizes/summary", headers=ADMIN
+        f"/api/admin/prizes/summary", headers=ADMIN
     ).json()
-    assert initial == {
-        "total_purchase_value": 16_000,
-        "claimed_purchase_value": 0,
-        "budget": 12_000,
-    }
+    # The pool is global, so the summary drops the per-event budget.
+    assert initial["total_purchase_value"] == 16_000
+    assert initial["claimed_purchase_value"] == 0
+    assert initial["total_prizes"] == 1
 
-    redeemed = submit(winner["code"], [{"prize_id": prize.json()["id"], "quantity": 1}])
+    redeemed = submit(winner["code"], [{"prize_id": prize_id, "quantity": 1}])
     assert redeemed.status_code == 201, redeemed.text
     summary = client.get(
-        f"/api/admin/events/{event_id}/prizes/summary", headers=ADMIN
+        f"/api/admin/prizes/summary", headers=ADMIN
     ).json()
     assert summary["total_purchase_value"] == 16_000
     assert summary["claimed_purchase_value"] == 0
@@ -100,7 +105,7 @@ def test_purchase_summary_uses_snapshot_and_picked_up_status() -> None:
         f"/api/admin/redemptions/{redemption_id}/pickup", headers=ADMIN
     ).status_code == 200
     claimed = client.get(
-        f"/api/admin/events/{event_id}/prizes/summary", headers=ADMIN
+        f"/api/admin/prizes/summary", headers=ADMIN
     ).json()
     assert claimed["claimed_purchase_value"] == 8_000
 

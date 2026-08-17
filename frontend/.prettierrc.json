@@ -3,5 +3,7 @@
   "semi": false,
   "trailingComma": "all",
   "bracketSameLine": false,
+  "singleAttributePerLine": false,
+  "printWidth": 120,
   "vueIndentScriptAndStyle": false
 }

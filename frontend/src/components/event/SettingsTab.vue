@@ -60,11 +60,7 @@ function showError(caught: unknown, fallback: string) {
 
 async function saveEvent() {
   const budget = Math.round(Number(eventBudgetYuan.value) * 100)
-  if (
-    !Number.isFinite(budget) ||
-    budget < 0 ||
-    !/^\d+(\.\d{1,2})?$/.test(eventBudgetYuan.value)
-  ) {
+  if (!Number.isFinite(budget) || budget < 0 || !/^\d+(\.\d{1,2})?$/.test(eventBudgetYuan.value)) {
     error.value = '比赛总预算必须是最多两位小数的非负金额'
     return
   }
@@ -76,9 +72,7 @@ async function saveEvent() {
       body: JSON.stringify({
         ...eventForm,
         budget,
-        redemption_deadline: new Date(
-          eventForm.redemption_deadline,
-        ).toISOString(),
+        redemption_deadline: new Date(eventForm.redemption_deadline).toISOString(),
       }),
     })
     notice.value = '比赛设置已保存'
@@ -95,60 +89,29 @@ async function saveEvent() {
   <form class="card mt-6 w-full max-w-2xl" @submit.prevent="saveEvent">
     <div class="grid gap-4">
       <label class="text-sm font-medium"
-        >名称<input
-          v-model="eventForm.name"
-          class="field mt-1"
-          maxlength="200"
-          required
+        >名称<input v-model="eventForm.name" class="field mt-1" maxlength="200" required
       /></label>
       <label class="text-sm font-medium"
-        >说明<textarea
-          v-model="eventForm.description"
-          class="field mt-1"
-          rows="3"
-        />
+        >说明<textarea v-model="eventForm.description" class="field mt-1" rows="3" />
       </label>
       <label class="text-sm font-medium"
-        >兑换截止时间<input
-          v-model="eventForm.redemption_deadline"
-          class="field mt-1"
-          type="datetime-local"
-          required
+        >兑换截止时间<input v-model="eventForm.redemption_deadline" class="field mt-1" type="datetime-local" required
       /></label>
       <label class="text-sm font-medium"
-        >固定自提地点<textarea
-          v-model="eventForm.pickup_location"
-          class="field mt-1"
-          rows="2"
-          required
-        />
+        >固定自提地点<textarea v-model="eventForm.pickup_location" class="field mt-1" rows="2" required />
       </label>
       <label class="text-sm font-medium"
-        >自提说明<textarea
-          v-model="eventForm.pickup_instructions"
-          class="field mt-1"
-          rows="3"
-          required
-        />
+        >自提说明<textarea v-model="eventForm.pickup_instructions" class="field mt-1" rows="3" required />
       </label>
       <label class="text-sm font-medium"
-        >比赛总预算（元）<input
-          v-model="eventBudgetYuan"
-          class="field mt-1"
-          inputmode="decimal"
-          required
-        /><span
+        >比赛总预算（元）<input v-model="eventBudgetYuan" class="field mt-1" inputmode="decimal" required /><span
           class="mt-1 block text-xs font-normal text-slate-500 dark:text-slate-400"
           >用于对比奖品采购总额并提示预算余量</span
         ></label
       >
       <label class="text-sm font-medium"
         >状态<select v-model="eventForm.status" class="field mt-1">
-          <option
-            v-for="status in allowedStatuses"
-            :key="status"
-            :value="status"
-          >
+          <option v-for="status in allowedStatuses" :key="status" :value="status">
             {{ statusLabel(status) }}
           </option>
         </select></label
@@ -156,14 +119,7 @@ async function saveEvent() {
     </div>
     <div class="mt-6 flex flex-col gap-2 sm:flex-row">
       <button class="btn-primary" :disabled="busy">保存比赛设置</button
-      ><button
-        class="btn-secondary"
-        type="button"
-        :disabled="busy"
-        @click="refresh"
-      >
-        刷新表单
-      </button>
+      ><button class="btn-secondary" type="button" :disabled="busy" @click="refresh">刷新表单</button>
     </div>
   </form>
 </template>

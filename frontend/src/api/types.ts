@@ -27,7 +27,6 @@ export interface EventWrite {
 
 export interface PrizeRecord {
   id: number
-  event_id: number
   name: string
   image: string
   jd_url: string | null
@@ -53,6 +52,20 @@ export interface PrizeWrite {
   description: string | null
   tag: string | null
   is_active: boolean
+}
+
+export interface PrizeSummary {
+  total_prizes: number
+  backorder_units: number
+  total_purchase_value: number
+  claimed_purchase_value: number
+  reimbursed_value: number
+}
+
+export interface EventPrizeSummary {
+  total_purchase_value: number
+  claimed_purchase_value: number
+  budget: number
 }
 
 export interface PrizeBatchIds {
@@ -91,6 +104,7 @@ export interface WinnerRecord {
   external_id: string | null
   name: string
   email: string
+  award_name: string | null
   quota: number
   code: string
   code_status: 'issued' | 'redeemed' | 'disabled'
@@ -103,16 +117,11 @@ export interface WinnerCreate {
   external_id: string | null
   name: string
   email: string
+  award_name: string | null
   quota: number
 }
 
 export type NotificationChannel = 'email' | 'webhook' | 'email_poster'
-
-export interface PrizeSummary {
-  total_purchase_value: number
-  claimed_purchase_value: number
-  budget: number
-}
 
 export interface WinnerImportPreview {
   valid: boolean
@@ -157,8 +166,7 @@ export interface RedemptionSuccess {
   pickup_instructions: string
 }
 
-export type AdminRedemptionStatus =
-  'submitted' | 'ready' | 'picked_up' | 'cancelled'
+export type AdminRedemptionStatus = 'submitted' | 'ready' | 'picked_up' | 'cancelled'
 
 export interface AdminRedemption {
   id: number
@@ -225,4 +233,49 @@ export interface NotificationJobRecord {
   last_error: string | null
   sent_at: string | null
   created_at: string
+}
+
+// Purchase Order types
+export type PurchaseOrderStatus = 'draft' | 'reimbursed' | 'cancelled'
+export type PurchaseAttachmentKind = 'transaction_screenshot' | 'invoice_pdf'
+
+export interface PurchaseOrderRecord {
+  id: number
+  order_no: string
+  title: string
+  note: string | null
+  status: PurchaseOrderStatus
+  total_value: number
+  items_summary: string
+  item_count: number
+  attachment_count: number
+  created_at: string
+  reimbursed_at: string | null
+  cancelled_at: string | null
+  items?: Array<{
+    id: number
+    prize_id: number
+    prize_name: string
+    unit_value: number
+    quantity: number
+    line_value: number
+  }>
+  attachments?: Array<{
+    id: number
+    kind: PurchaseAttachmentKind
+    filename: string
+    byte_size: number
+    created_at: string
+  }>
+}
+
+export interface PurchaseOrderItemWrite {
+  prize_id: number
+  quantity: number
+}
+
+export interface PurchaseOrderWrite {
+  title: string
+  note: string | null
+  items: PurchaseOrderItemWrite[]
 }
