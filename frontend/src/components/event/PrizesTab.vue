@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { push } from 'notivue'
 import { computed, inject, onMounted, ref } from 'vue'
 
 import { api } from '@/api/client'
@@ -6,7 +7,7 @@ import type { PrizeRecord } from '@/api/types'
 import { eventTabContextKey } from '@/components/event/eventContext'
 
 const context = inject(eventTabContextKey)!
-const { eventId, error, notice, busy } = context
+const { eventId, busy } = context
 
 interface PrizeAvailability extends PrizeRecord {
   available_for_event: boolean
@@ -24,11 +25,10 @@ const availablePrizes = computed(() => allPrizes.value.filter((p) => p.available
 
 async function loadPrizes() {
   loading.value = true
-  error.value = ''
   try {
     allPrizes.value = await api<PrizeAvailability[]>(`/api/admin/events/${eventId}/prizes/available`)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '加载失败'
+    push.error(e instanceof Error ? e.message : '加载失败')
   } finally {
     loading.value = false
   }
@@ -41,15 +41,14 @@ function money(cents: number) {
 async function removePrize(prize: PrizeAvailability) {
   if (!window.confirm(`确认从本比赛移除"${prize.name}"？`)) return
   busy.value = true
-  error.value = ''
   try {
     await api(`/api/admin/events/${eventId}/prizes/${prize.id}`, {
       method: 'DELETE',
     })
     prize.available_for_event = false
-    notice.value = `已从本比赛移除"${prize.name}"`
+    push.success(`已从本比赛移除"${prize.name}"`)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '操作失败'
+    push.error(e instanceof Error ? e.message : '操作失败')
   } finally {
     busy.value = false
   }
@@ -59,16 +58,15 @@ async function batchRemovePrizes() {
   const ids = [...selectedRemoveIds.value]
   if (!window.confirm(`确认从本比赛移除选中的 ${ids.length} 个奖品？`)) return
   busy.value = true
-  error.value = ''
   try {
     await Promise.all(ids.map((id) => api(`/api/admin/events/${eventId}/prizes/${id}`, { method: 'DELETE' })))
     allPrizes.value.forEach((p) => {
       if (ids.includes(p.id)) p.available_for_event = false
     })
     selectedRemoveIds.value = new Set()
-    notice.value = `已从本比赛移除 ${ids.length} 个奖品`
+    push.success(`已从本比赛移除 ${ids.length} 个奖品`)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '批量移除失败'
+    push.error(e instanceof Error ? e.message : '批量移除失败')
   } finally {
     busy.value = false
   }
@@ -113,7 +111,6 @@ async function batchAddPrizes() {
   const ids = [...selectedAddIds.value]
   if (ids.length === 0) return
   busy.value = true
-  error.value = ''
   try {
     await Promise.all(ids.map((id) => api(`/api/admin/events/${eventId}/prizes/${id}`, { method: 'POST' })))
     allPrizes.value.forEach((p) => {
@@ -121,9 +118,9 @@ async function batchAddPrizes() {
     })
     selectedAddIds.value = new Set()
     showAddModal.value = false
-    notice.value = `已添加 ${ids.length} 个奖品到本比赛`
+    push.success(`已添加 ${ids.length} 个奖品到本比赛`)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '批量添加失败'
+    push.error(e instanceof Error ? e.message : '批量添加失败')
   } finally {
     busy.value = false
   }
@@ -159,16 +156,6 @@ onMounted(loadPrizes)
         <button class="btn-primary" :disabled="busy" @click="openAddModal">添加奖品</button>
       </div>
     </div>
-
-    <p v-if="error" class="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
-      {{ error }}
-    </p>
-    <p
-      v-if="notice"
-      class="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-    >
-      {{ notice }}
-    </p>
 
     <div
       v-if="loading"

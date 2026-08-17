@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { push } from 'notivue'
 import { inject, reactive, ref } from 'vue'
 
 import { api, downloadAdmin } from '@/api/client'
@@ -6,7 +7,7 @@ import type { NotificationChannel, WinnerCreate, WinnerImportPreview, WinnerReco
 import { eventTabContextKey } from '@/components/event/eventContext'
 
 const context = inject(eventTabContextKey)!
-const { eventId, winners, error, notice, busy, load } = context
+const { eventId, winners, busy, load } = context
 
 const winnerImportFile = ref<File | null>(null)
 const winnerImportPreview = ref<WinnerImportPreview | null>(null)
@@ -22,14 +23,13 @@ const winnerForm = reactive<WinnerCreate>({
 })
 
 function showError(caught: unknown, fallback: string) {
-  error.value = caught instanceof Error ? caught.message : fallback
+  push.error(caught instanceof Error ? caught.message : fallback)
 }
 
 async function validateWinnerImport(file: File | undefined) {
   if (!file) return
   winnerImportFile.value = file
   winnerImportPreview.value = null
-  error.value = ''
   const data = new FormData()
   data.append('file', file)
   try {
@@ -52,7 +52,7 @@ async function confirmWinnerImport() {
       method: 'POST',
       body: data,
     })
-    notice.value = `已导入 ${result.imported} 名获奖人并生成兑换码`
+    push.success(`已导入 ${result.imported} 名获奖人并生成兑换码`)
     winnerImportFile.value = null
     winnerImportPreview.value = null
     await load()
@@ -77,13 +77,12 @@ async function saveWinner() {
     quota: Number(winnerForm.quota),
   }
   busy.value = true
-  error.value = ''
   try {
     await api(`/api/admin/events/${eventId}/winners`, {
       method: 'POST',
       body: JSON.stringify(payload),
     })
-    notice.value = '已添加获奖人并生成兑换码'
+    push.success('已添加获奖人并生成兑换码')
     showWinnerForm.value = false
     await load()
   } catch (caught) {
@@ -95,7 +94,7 @@ async function saveWinner() {
 
 async function copyCode(code: string) {
   await navigator.clipboard.writeText(code)
-  notice.value = '兑换码已复制'
+  push.success('兑换码已复制')
 }
 
 function codeStatusLabel(status: WinnerRecord['code_status']) {
@@ -122,7 +121,6 @@ function openResend(winner: WinnerRecord) {
 async function resendNotification() {
   if (!notifyingWinner.value || notificationChannels.value.length === 0) return
   busy.value = true
-  error.value = ''
   try {
     const result = await api<{ queued: number }>(
       `/api/admin/winners/${notifyingWinner.value.id}/notifications/resend`,
@@ -131,7 +129,7 @@ async function resendNotification() {
         body: JSON.stringify({ channels: notificationChannels.value }),
       },
     )
-    notice.value = `已创建 ${result.queued} 条通知任务`
+    push.success(`已创建 ${result.queued} 条通知任务`)
     notifyingWinner.value = null
     await load()
   } catch (caught) {
@@ -146,17 +144,16 @@ async function adjustQuota(winner: WinnerRecord) {
   if (value === null) return
   const quota = Number(value)
   if (!Number.isInteger(quota) || quota <= 0) {
-    error.value = '额度必须是大于 0 的整数'
+    push.error('额度必须是大于 0 的整数')
     return
   }
   busy.value = true
-  error.value = ''
   try {
     await api(`/api/admin/winners/${winner.id}/quota`, {
       method: 'PUT',
       body: JSON.stringify({ quota }),
     })
-    notice.value = `已将 ${winner.name} 的额度调整为 ${quota}`
+    push.success(`已将 ${winner.name} 的额度调整为 ${quota}`)
     await load()
   } catch (caught) {
     showError(caught, '调整额度失败')
@@ -168,10 +165,9 @@ async function adjustQuota(winner: WinnerRecord) {
 async function revokeCode(winner: WinnerRecord) {
   if (!window.confirm(`确认撤销 ${winner.name} 的兑换码 ${winner.code}？撤销后该码将无法兑换。`)) return
   busy.value = true
-  error.value = ''
   try {
     await api(`/api/admin/winners/${winner.id}/code/revoke`, { method: 'POST' })
-    notice.value = `已撤销 ${winner.name} 的兑换码`
+    push.success(`已撤销 ${winner.name} 的兑换码`)
     await load()
   } catch (caught) {
     showError(caught, '撤销兑换码失败')
@@ -184,13 +180,12 @@ async function editAwardName(winner: WinnerRecord) {
   const value = window.prompt(`请输入 ${winner.name} 的奖项名称（留空清除）`, winner.award_name || '')
   if (value === null) return
   busy.value = true
-  error.value = ''
   try {
     await api(`/api/admin/winners/${winner.id}/award`, {
       method: 'PUT',
       body: JSON.stringify({ award_name: value.trim() || null }),
     })
-    notice.value = `已更新 ${winner.name} 的奖项名称`
+    push.success(`已更新 ${winner.name} 的奖项名称`)
     await load()
   } catch (caught) {
     showError(caught, '更新奖项名称失败')

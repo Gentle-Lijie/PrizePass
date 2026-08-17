@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { push } from 'notivue'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -7,7 +8,6 @@ import { useAuthStore } from '@/stores/auth'
 import { useRedemptionStore } from '@/stores/redemption'
 
 const code = ref('')
-const error = ref('')
 const busy = ref(false)
 const auth = useAuthStore()
 const redemption = useRedemptionStore()
@@ -25,7 +25,6 @@ const codeErrorMessages: Record<string, string> = {
 
 async function verify() {
   busy.value = true
-  error.value = ''
   auth.redemptionCode = code.value.trim().toUpperCase()
   redemption.resetSelection()
   try {
@@ -33,8 +32,11 @@ async function verify() {
     await router.push('/redeem/prizes')
   } catch (caught) {
     auth.clearRedemptionCode()
-    error.value =
-      caught instanceof ApiError ? (codeErrorMessages[caught.code] ?? caught.message) : '暂时无法连接服务器，请稍后重试'
+    push.error(
+      caught instanceof ApiError
+        ? (codeErrorMessages[caught.code] ?? caught.message)
+        : '暂时无法连接服务器，请稍后重试',
+    )
   } finally {
     busy.value = false
   }
@@ -67,9 +69,6 @@ onMounted(async () => {
         autocomplete="off"
         required
       />
-      <p v-if="error" class="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">
-        {{ error }}
-      </p>
       <button class="btn-primary mt-4 w-full" :disabled="busy || code.trim().length !== 12">
         {{ busy ? '验证中…' : '验证兑换码' }}
       </button>

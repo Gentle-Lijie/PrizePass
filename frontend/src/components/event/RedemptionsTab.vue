@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { push } from 'notivue'
 import { inject, onMounted, onUnmounted, ref } from 'vue'
 
 import { api, downloadAdmin } from '@/api/client'
@@ -6,14 +7,14 @@ import type { AdminRedemption, AdminRedemptionStatus } from '@/api/types'
 import { eventTabContextKey } from '@/components/event/eventContext'
 
 const context = inject(eventTabContextKey)!
-const { eventId, redemptions, error, notice, busy, load, refresh, refreshHooks } = context
+const { eventId, redemptions, busy, load, refresh, refreshHooks } = context
 
 const selectedRedemption = ref<AdminRedemption | null>(null)
 const redemptionStatus = ref<AdminRedemptionStatus | ''>('')
 const redemptionSearch = ref('')
 
 function showError(caught: unknown, fallback: string) {
-  error.value = caught instanceof Error ? caught.message : fallback
+  push.error(caught instanceof Error ? caught.message : fallback)
 }
 
 function redemptionStatusLabel(status: AdminRedemptionStatus) {
@@ -69,7 +70,7 @@ async function redemptionAction(redemption: AdminRedemption, action: 'ready' | '
     if (input === null) return
     reason = input.trim()
     if (!reason) {
-      error.value = '驳回原因不能为空'
+      push.error('驳回原因不能为空')
       return
     }
   } else if (!window.confirm(`确认${labels[action]}？`)) return
@@ -79,7 +80,7 @@ async function redemptionAction(redemption: AdminRedemption, action: 'ready' | '
       method: 'POST',
       ...(reason !== null ? { body: JSON.stringify({ reason }) } : {}),
     })
-    notice.value = '兑换状态已更新'
+    push.success('兑换状态已更新')
     await load()
     await filterRedemptions()
     if (selectedRedemption.value) {

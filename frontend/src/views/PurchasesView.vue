@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { push } from 'notivue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 
 import { api, downloadAdmin } from '@/api/client'
@@ -16,8 +17,6 @@ const auth = useAuthStore()
 const purchases = ref<PurchaseOrderRecord[]>([])
 const loading = ref(true)
 const busy = ref(false)
-const error = ref('')
-const notice = ref('')
 const statusFilter = ref<PurchaseOrderStatus | ''>('')
 
 // Modals
@@ -46,12 +45,9 @@ const prizesLoading = ref(false)
 
 // Attachment upload state
 const uploadingKind = ref<PurchaseAttachmentKind | null>(null)
-const uploadError = ref('')
 
 async function load() {
   loading.value = true
-  error.value = ''
-  notice.value = ''
   try {
     let url = '/api/admin/purchases'
     if (statusFilter.value) {
@@ -59,7 +55,7 @@ async function load() {
     }
     purchases.value = await api<PurchaseOrderRecord[]>(url)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '加载失败'
+    push.error(e instanceof Error ? e.message : '加载失败')
   } finally {
     loading.value = false
   }
@@ -118,7 +114,6 @@ async function openEditModal(order: PurchaseOrderRecord) {
   selectedPrizes.value = new Map()
   prizeSearch.value = ''
   showFormModal.value = true
-  error.value = ''
   try {
     const detail = await api<PurchaseOrderRecord>(`/api/admin/purchases/${order.id}`)
     if (detail.items) {
@@ -127,7 +122,7 @@ async function openEditModal(order: PurchaseOrderRecord) {
       }
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '加载详情失败'
+    push.error(e instanceof Error ? e.message : '加载详情失败')
     return
   }
   await loadPrizes()
@@ -138,7 +133,7 @@ async function loadPrizes() {
   try {
     allPrizes.value = await api<PrizeRecord[]>('/api/admin/prizes')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '加载奖品列表失败'
+    push.error(e instanceof Error ? e.message : '加载奖品列表失败')
   } finally {
     prizesLoading.value = false
   }
@@ -186,7 +181,7 @@ function getPrizeQuantity(prizeId: number): number {
 
 async function submitForm() {
   if (!form.title.trim()) {
-    error.value = '标题不能为空'
+    push.error('标题不能为空')
     return
   }
   const items: Array<{ prize_id: number; quantity: number }> = []
@@ -194,11 +189,10 @@ async function submitForm() {
     if (quantity > 0) items.push({ prize_id, quantity })
   }
   if (items.length === 0) {
-    error.value = '请至少选择一个奖品'
+    push.error('请至少选择一个奖品')
     return
   }
   busy.value = true
-  error.value = ''
   try {
     const payload: PurchaseOrderWrite = {
       title: form.title.trim(),
@@ -210,18 +204,18 @@ async function submitForm() {
         method: 'PUT',
         body: JSON.stringify(payload),
       })
-      notice.value = '采购单已更新'
+      push.success('采购单已更新')
     } else {
       await api<PurchaseOrderRecord>('/api/admin/purchases', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
-      notice.value = '采购单已创建'
+      push.success('采购单已创建')
     }
     showFormModal.value = false
     await load()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '操作失败'
+    push.error(e instanceof Error ? e.message : '操作失败')
   } finally {
     busy.value = false
   }
@@ -230,20 +224,17 @@ async function submitForm() {
 // --- Detail Modal ---
 
 async function openDetail(order: PurchaseOrderRecord) {
-  error.value = ''
   try {
     detailOrder.value = await api<PurchaseOrderRecord>(`/api/admin/purchases/${order.id}`)
     showDetailModal.value = true
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '加载详情失败'
+    push.error(e instanceof Error ? e.message : '加载详情失败')
   }
 }
 
 // --- Attachment Modal ---
 
 async function openAttachments(order: PurchaseOrderRecord) {
-  error.value = ''
-  uploadError.value = ''
   attachmentOrder.value = order
   showAttachmentModal.value = true
   await refreshAttachmentOrder(order.id)
@@ -253,13 +244,12 @@ async function refreshAttachmentOrder(id: number) {
   try {
     attachmentOrder.value = await api<PurchaseOrderRecord>(`/api/admin/purchases/${id}`)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '刷新附件失败'
+    push.error(e instanceof Error ? e.message : '刷新附件失败')
   }
 }
 
 async function uploadAttachment(kind: PurchaseAttachmentKind, file: File) {
   if (!attachmentOrder.value) return
-  uploadError.value = ''
   uploadingKind.value = kind
   try {
     const formData = new FormData()
@@ -274,11 +264,11 @@ async function uploadAttachment(kind: PurchaseAttachmentKind, file: File) {
       const body = await response.json()
       throw new Error(body?.error?.message || `上传失败 (${response.status})`)
     }
-    notice.value = `${kindLabel(kind)} 已上传`
+    push.success(`${kindLabel(kind)} 已上传`)
     await refreshAttachmentOrder(attachmentOrder.value.id)
     await load()
   } catch (e) {
-    uploadError.value = e instanceof Error ? e.message : '上传失败'
+    push.error(e instanceof Error ? e.message : '上传失败')
   } finally {
     uploadingKind.value = null
   }
@@ -302,16 +292,15 @@ function triggerUpload(kind: PurchaseAttachmentKind) {
 async function deleteAttachment(attachmentId: number, kind: PurchaseAttachmentKind) {
   if (!attachmentOrder.value) return
   if (!confirm(`确定删除此${kindLabel(kind)}吗？`)) return
-  uploadError.value = ''
   try {
     await api<void>(`/api/admin/purchases/${attachmentOrder.value.id}/attachments/${attachmentId}`, {
       method: 'DELETE',
     })
-    notice.value = '附件已删除'
+    push.success('附件已删除')
     await refreshAttachmentOrder(attachmentOrder.value.id)
     await load()
   } catch (e) {
-    uploadError.value = e instanceof Error ? e.message : '删除失败'
+    push.error(e instanceof Error ? e.message : '删除失败')
   }
 }
 
@@ -325,24 +314,23 @@ async function executeConfirm() {
   if (!confirmAction.value) return
   const { kind, order } = confirmAction.value
   busy.value = true
-  error.value = ''
   try {
     if (kind === 'cancel') {
       await api<PurchaseOrderRecord>(`/api/admin/purchases/${order.id}/cancel`, { method: 'POST' })
-      notice.value = '采购单已取消'
+      push.success('采购单已取消')
     } else if (kind === 'delete') {
       await api<void>(`/api/admin/purchases/${order.id}`, {
         method: 'DELETE',
       })
-      notice.value = '采购单已删除'
+      push.success('采购单已删除')
     } else if (kind === 'reimburse') {
       await api<PurchaseOrderRecord>(`/api/admin/purchases/${order.id}/reimburse`, { method: 'POST' })
-      notice.value = '已标记为报销'
+      push.success('已标记为报销')
     }
     confirmAction.value = null
     await load()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '操作失败'
+    push.error(e instanceof Error ? e.message : '操作失败')
   } finally {
     busy.value = false
   }
@@ -351,18 +339,18 @@ async function executeConfirm() {
 async function downloadPackage(orderId: number, orderNo: string) {
   try {
     await downloadAdmin(`/api/admin/purchases/${orderId}/package`, `${orderNo}.zip`)
-    notice.value = '打包下载已开始'
+    push.success('打包下载已开始')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '下载失败'
+    push.error(e instanceof Error ? e.message : '下载失败')
   }
 }
 
 async function exportPurchases(format: 'csv' | 'xlsx') {
   try {
     await downloadAdmin(`/api/admin/purchases/export?format=${format}`, `purchases.${format}`)
-    notice.value = '导出成功'
+    push.success('导出成功')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '导出失败'
+    push.error(e instanceof Error ? e.message : '导出失败')
   }
 }
 
@@ -372,15 +360,6 @@ function hasBothAttachmentTypes(order: PurchaseOrderRecord): boolean {
   const kinds = new Set(order.attachments.map((a) => a.kind))
   return kinds.has('transaction_screenshot') && kinds.has('invoice_pdf')
 }
-
-// Auto-clear notices
-watch(notice, (val) => {
-  if (val) {
-    setTimeout(() => {
-      if (notice.value === val) notice.value = ''
-    }, 4000)
-  }
-})
 
 onMounted(load)
 </script>
@@ -395,17 +374,6 @@ onMounted(load)
           {{ loading ? '加载中...' : '刷新' }}
         </button>
       </div>
-    </div>
-
-    <div v-if="error" class="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
-      {{ error }}
-    </div>
-
-    <div
-      v-if="notice"
-      class="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-    >
-      {{ notice }}
     </div>
 
     <!-- Filters and Actions -->
@@ -837,13 +805,6 @@ onMounted(load)
         <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
           {{ attachmentOrder.order_no }} — {{ attachmentOrder.title }}
         </p>
-
-        <div
-          v-if="uploadError"
-          class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300"
-        >
-          {{ uploadError }}
-        </div>
 
         <!-- Upload buttons -->
         <div class="mt-5 grid gap-4 sm:grid-cols-2">

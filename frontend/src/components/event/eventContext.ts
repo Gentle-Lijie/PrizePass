@@ -4,7 +4,7 @@ import type { AdminRedemption, EventPrizeSummary, EventRecord, PrizeRecord, Winn
 
 // Shared state provided by EventDetailView to its tab components.
 // Every write action in a tab still funnels through load() so all lists stay
-// in sync, and error/notice/busy remain a single global set.
+// in sync, and busy remains a single global set.
 export interface EventTabContext {
   eventId: number
   event: Ref<EventRecord | null>
@@ -12,8 +12,6 @@ export interface EventTabContext {
   prizeSummary: Ref<EventPrizeSummary>
   winners: Ref<WinnerRecord[]>
   redemptions: Ref<AdminRedemption[]>
-  error: Ref<string>
-  notice: Ref<string>
   busy: Ref<boolean>
   load: () => Promise<void>
   // load() plus refreshHooks (e.g. re-open an open redemption detail).

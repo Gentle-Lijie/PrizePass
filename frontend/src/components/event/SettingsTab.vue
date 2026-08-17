@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { push } from 'notivue'
 import { computed, inject, reactive, ref, watch } from 'vue'
 
 import { api } from '@/api/client'
@@ -7,7 +8,7 @@ import { eventTabContextKey } from '@/components/event/eventContext'
 import { statusLabel } from '@/utils/labels'
 
 const context = inject(eventTabContextKey)!
-const { eventId, event, error, notice, busy, load, refresh } = context
+const { eventId, event, busy, load, refresh } = context
 
 const eventForm = reactive<EventWrite>({
   name: '',
@@ -55,17 +56,16 @@ watch(
 )
 
 function showError(caught: unknown, fallback: string) {
-  error.value = caught instanceof Error ? caught.message : fallback
+  push.error(caught instanceof Error ? caught.message : fallback)
 }
 
 async function saveEvent() {
   const budget = Math.round(Number(eventBudgetYuan.value) * 100)
   if (!Number.isFinite(budget) || budget < 0 || !/^\d+(\.\d{1,2})?$/.test(eventBudgetYuan.value)) {
-    error.value = '比赛总预算必须是最多两位小数的非负金额'
+    push.error('比赛总预算必须是最多两位小数的非负金额')
     return
   }
   busy.value = true
-  error.value = ''
   try {
     await api(`/api/admin/events/${eventId}`, {
       method: 'PUT',
@@ -75,7 +75,7 @@ async function saveEvent() {
         redemption_deadline: new Date(eventForm.redemption_deadline).toISOString(),
       }),
     })
-    notice.value = '比赛设置已保存'
+    push.success('比赛设置已保存')
     await load()
   } catch (caught) {
     showError(caught, '保存失败')

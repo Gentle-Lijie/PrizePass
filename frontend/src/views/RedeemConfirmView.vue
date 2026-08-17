@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { push } from 'notivue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -11,7 +12,6 @@ const auth = useAuthStore()
 const redemption = useRedemptionStore()
 const router = useRouter()
 const busy = ref(false)
-const error = ref('')
 const form = reactive({ contact_name: '', contact_phone: '', note: '' })
 const selected = computed(() => redemption.prizes.filter((prize) => (redemption.quantities[prize.id] ?? 0) > 0))
 const isCustom = computed(() => redemption.customPrize !== null)
@@ -35,7 +35,6 @@ async function requestSubmit() {
 async function submit() {
   showInvoiceConfirm.value = false
   busy.value = true
-  error.value = ''
   try {
     const custom = redemption.customPrize
     redemption.success = await api<RedemptionSuccess>('/api/public/redemptions', {
@@ -63,7 +62,7 @@ async function submit() {
     auth.clearRedemptionCode()
     await router.replace('/redeem/success')
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : '提交失败，请重试'
+    push.error(caught instanceof Error ? caught.message : '提交失败，请重试')
   } finally {
     busy.value = false
   }
@@ -152,9 +151,6 @@ onMounted(async () => {
           {{ redemption.context.event.pickup_instructions }}
         </p>
       </section>
-      <p v-if="error" class="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
-        {{ error }}
-      </p>
       <div class="relative sticky bottom-4 z-10 sm:static">
         <div
           class="pointer-events-none absolute inset-x-0 -top-12 h-16 bg-gradient-to-t from-canvas via-canvas/90 to-transparent backdrop-blur-[3px] sm:hidden"

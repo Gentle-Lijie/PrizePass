@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { push } from 'notivue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui'
@@ -12,7 +13,6 @@ const auth = useAuthStore()
 const redemption = useRedemptionStore()
 const router = useRouter()
 const loading = ref(true)
-const error = ref('')
 const used = computed(() =>
   redemption.prizes.reduce((sum, prize) => sum + prize.redeem_value * (redemption.quantities[prize.id] ?? 0), 0),
 )
@@ -76,10 +76,9 @@ function openCustomForm() {
 function applyCustomPrize() {
   if (!customForm.name.trim()) return
   if (customForm.priceYuan.trim() && !/^\d+(\.\d{1,2})?$/.test(customForm.priceYuan.trim())) {
-    error.value = '期望价格必须是最多两位小数的非负金额'
+    push.error('期望价格必须是最多两位小数的非负金额')
     return
   }
-  error.value = ''
   redemption.customPrize = {
     name: customForm.name.trim(),
     url: customForm.url.trim(),
@@ -95,7 +94,6 @@ function removeCustomPrize() {
 
 async function load() {
   loading.value = true
-  error.value = ''
   if (!auth.redemptionCode) {
     await router.replace('/redeem')
     return
@@ -152,9 +150,6 @@ onMounted(load)
           </div>
         </div>
       </header>
-      <p v-if="error" class="mt-4 text-sm text-red-600 dark:text-red-400">
-        {{ error }}
-      </p>
       <div
         v-if="redemption.prizes.length === 0"
         class="card mt-6 text-center text-slate-500 sm:mt-8 dark:text-slate-400"

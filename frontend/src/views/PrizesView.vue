@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { push } from 'notivue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 
@@ -27,13 +28,10 @@ const summary = ref<PrizeSummary>({
 })
 const loading = ref(true)
 const busy = ref(false)
-const error = ref('')
-const notice = ref('')
 
 // --- Modal state ---
 const showModal = ref(false)
 const editingPrizeId = ref<number | null>(null)
-const uploadError = ref('')
 
 const blankForm = (): PrizeWrite => ({
   name: '',
@@ -87,7 +85,6 @@ function clearSelection() {
 async function batchSetTag() {
   if (selectedIds.value.size === 0) return
   busy.value = true
-  error.value = ''
   try {
     const payload: PrizeBatchTag = {
       ids: [...selectedIds.value],
@@ -97,7 +94,7 @@ async function batchSetTag() {
       method: 'POST',
       body: JSON.stringify(payload),
     })
-    notice.value = `已更新 ${selectedIds.value.size} 个奖品的标签`
+    push.success(`已更新 ${selectedIds.value.size} 个奖品的标签`)
     showBatchTagModal.value = false
     batchTagValue.value = ''
     clearSelection()
@@ -112,7 +109,6 @@ async function batchSetTag() {
 async function batchAdjustStock() {
   if (selectedIds.value.size === 0) return
   busy.value = true
-  error.value = ''
   try {
     const payload: PrizeBatchStock = {
       ids: [...selectedIds.value],
@@ -123,7 +119,7 @@ async function batchAdjustStock() {
       method: 'POST',
       body: JSON.stringify(payload),
     })
-    notice.value = `已调整 ${selectedIds.value.size} 个奖品的库存`
+    push.success(`已调整 ${selectedIds.value.size} 个奖品的库存`)
     showBatchStockModal.value = false
     batchStockValue.value = 0
     clearSelection()
@@ -139,13 +135,14 @@ async function batchDelete() {
   if (selectedIds.value.size === 0) return
   if (!window.confirm(`确认删除选中的 ${selectedIds.value.size} 个奖品？`)) return
   busy.value = true
-  error.value = ''
   try {
     const result = await api<PrizeBatchDeleteResult>('/api/admin/prizes/batch-delete', {
       method: 'POST',
       body: JSON.stringify({ ids: [...selectedIds.value] }),
     })
-    notice.value = `已删除 ${result.deleted} 个奖品${result.skipped.length > 0 ? `，跳过 ${result.skipped.length} 个（已被兑换引用）` : ''}`
+    push.success(
+      `已删除 ${result.deleted} 个奖品${result.skipped.length > 0 ? `，跳过 ${result.skipped.length} 个（已被兑换引用）` : ''}`,
+    )
     clearSelection()
     await load()
   } catch (caught) {
@@ -162,7 +159,6 @@ async function load() {
     return
   }
   loading.value = true
-  error.value = ''
   try {
     const [prizeData, summaryData] = await Promise.all([
       api<PrizeRecord[]>('/api/admin/prizes'),
@@ -175,7 +171,7 @@ async function load() {
       await router.replace('/admin')
       return
     }
-    error.value = caught instanceof Error ? caught.message : '加载失败'
+    push.error(caught instanceof Error ? caught.message : '加载失败')
   } finally {
     loading.value = false
   }
@@ -186,11 +182,7 @@ function formatMoney(cents: number): string {
 }
 
 function showErrorMsg(caught: unknown, fallback: string) {
-  error.value = caught instanceof Error ? caught.message : fallback
-}
-
-function clearNotice() {
-  notice.value = ''
+  push.error(caught instanceof Error ? caught.message : fallback)
 }
 
 // --- Create / Edit Modal ---
@@ -199,8 +191,6 @@ function openCreateModal() {
   Object.assign(form, blankForm())
   realValueYuan.value = '0.00'
   purchaseValueYuan.value = '0.00'
-  uploadError.value = ''
-  error.value = ''
   showModal.value = true
 }
 
@@ -220,8 +210,6 @@ function openEditModal(prize: PrizeRecord) {
   })
   realValueYuan.value = (prize.real_value / 100).toFixed(2)
   purchaseValueYuan.value = (prize.purchase_value / 100).toFixed(2)
-  uploadError.value = ''
-  error.value = ''
   showModal.value = true
 }
 
@@ -241,12 +229,11 @@ async function handleImageUpload(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-  uploadError.value = ''
   try {
     const url = await uploadImage(file)
     form.image = url
   } catch (caught) {
-    uploadError.value = caught instanceof Error ? caught.message : '上传失败'
+    push.error(caught instanceof Error ? caught.message : '上传失败')
   }
 }
 
@@ -259,12 +246,12 @@ function yuanToCents(yuan: string): number | null {
 async function savePrize() {
   const realCents = yuanToCents(realValueYuan.value)
   if (realCents === null) {
-    error.value = '采购价必须是合法的金额（最多两位小数）'
+    push.error('采购价必须是合法的金额（最多两位小数）')
     return
   }
   const purchaseCents = yuanToCents(purchaseValueYuan.value)
   if (purchaseCents === null) {
-    error.value = '展示价必须是合法的金额（最多两位小数）'
+    push.error('展示价必须是合法的金额（最多两位小数）')
     return
   }
 
@@ -282,29 +269,28 @@ async function savePrize() {
   }
 
   if (!payload.name) {
-    error.value = '奖品名称不能为空'
+    push.error('奖品名称不能为空')
     return
   }
   if (!payload.image) {
-    error.value = '请填写奖品图片地址或上传图片'
+    push.error('请填写奖品图片地址或上传图片')
     return
   }
 
   busy.value = true
-  error.value = ''
   try {
     if (editingPrizeId.value !== null) {
       await api<PrizeRecord>(`/api/admin/prizes/${editingPrizeId.value}`, {
         method: 'PUT',
         body: JSON.stringify(payload),
       })
-      notice.value = '已更新奖品'
+      push.success('已更新奖品')
     } else {
       await api<PrizeRecord>('/api/admin/prizes', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
-      notice.value = '已创建奖品'
+      push.success('已创建奖品')
     }
     closeModal()
     await load()
@@ -318,13 +304,12 @@ async function savePrize() {
 // --- Toggle active ---
 async function toggleActive(prize: PrizeRecord) {
   busy.value = true
-  error.value = ''
   try {
     await api<PrizeRecord>(`/api/admin/prizes/${prize.id}`, {
       method: 'PUT',
       body: JSON.stringify({ ...prize, is_active: !prize.is_active }),
     })
-    notice.value = prize.is_active ? `已下架"${prize.name}"` : `已上架"${prize.name}"`
+    push.success(prize.is_active ? `已下架"${prize.name}"` : `已上架"${prize.name}"`)
     await load()
   } catch (caught) {
     showErrorMsg(caught, '操作失败')
@@ -337,10 +322,9 @@ async function toggleActive(prize: PrizeRecord) {
 async function deletePrize(prize: PrizeRecord) {
   if (!window.confirm(`确认删除奖品"${prize.name}"？此操作不可恢复。`)) return
   busy.value = true
-  error.value = ''
   try {
     await api(`/api/admin/prizes/${prize.id}`, { method: 'DELETE' })
-    notice.value = `已删除"${prize.name}"`
+    push.success(`已删除"${prize.name}"`)
     await load()
   } catch (caught) {
     showErrorMsg(caught, '删除失败')
@@ -354,7 +338,6 @@ async function validateImport(file: File | undefined) {
   if (!file) return
   importFile.value = file
   importPreview.value = null
-  error.value = ''
   const data = new FormData()
   data.append('file', file)
   try {
@@ -377,10 +360,9 @@ async function confirmImport() {
   const data = new FormData()
   data.append('file', importFile.value)
   busy.value = true
-  error.value = ''
   try {
     const result = await api<{ imported: number }>('/api/admin/prizes/import/confirm', { method: 'POST', body: data })
-    notice.value = `已导入 ${result.imported} 个奖品`
+    push.success(`已导入 ${result.imported} 个奖品`)
     importFile.value = null
     importPreview.value = null
     await load()
@@ -404,18 +386,6 @@ onMounted(load)
           {{ loading ? '加载中...' : '刷新' }}
         </button>
       </div>
-    </div>
-
-    <div v-if="error" class="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
-      {{ error }}
-    </div>
-
-    <div
-      v-if="notice"
-      class="mb-4 rounded-lg bg-green-50 p-4 text-sm text-green-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-    >
-      {{ notice }}
-      <button class="ml-2 text-xs underline" @click="clearNotice">关闭</button>
     </div>
 
     <!-- Summary Cards -->
@@ -804,9 +774,6 @@ onMounted(load)
               </label>
               <img v-if="form.image" :src="form.image" alt="预览" class="h-10 w-10 rounded object-cover" />
             </div>
-            <p v-if="uploadError" class="mt-1 text-xs text-red-600 dark:text-red-400">
-              {{ uploadError }}
-            </p>
           </div>
 
           <label class="text-sm font-medium">

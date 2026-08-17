@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { push } from 'notivue'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -6,21 +7,19 @@ import { api, ApiError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 
 const password = ref('')
-const error = ref('')
 const busy = ref(false)
 const auth = useAuthStore()
 const router = useRouter()
 
 async function enter() {
   busy.value = true
-  error.value = ''
   auth.adminPassword = password.value
   try {
     await api<{ ok: boolean }>('/api/admin/check')
     await router.push('/admin/events')
   } catch (caught) {
     auth.clearAdminPassword()
-    error.value = caught instanceof ApiError ? caught.message : '暂时无法连接服务器'
+    push.error(caught instanceof ApiError ? caught.message : '暂时无法连接服务器')
   } finally {
     busy.value = false
   }
@@ -42,9 +41,6 @@ async function enter() {
         required
         autocomplete="current-password"
       />
-      <p v-if="error" class="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">
-        {{ error }}
-      </p>
       <button class="btn-primary mt-5 w-full" type="submit" :disabled="busy || !password">
         {{ busy ? '验证中…' : '进入后台' }}
       </button>

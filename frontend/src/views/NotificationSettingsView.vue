@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { push } from 'notivue'
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 
@@ -29,8 +30,6 @@ const configuration = reactive({
   email_poster: false,
 })
 const email = ref('')
-const error = ref('')
-const notice = ref('')
 const busy = ref(false)
 const preview = ref<{ title: string; html: string } | null>(null)
 const eventLabels: Record<string, string> = {
@@ -114,16 +113,15 @@ async function load() {
     jobs.value = recentJobs
   } catch (caught) {
     if (caught instanceof ApiError && caught.status === 401) await router.replace('/admin')
-    else error.value = caught instanceof Error ? caught.message : '加载失败'
+    else push.error(caught instanceof Error ? caught.message : '加载失败')
   }
 }
 
 async function refreshForm() {
   busy.value = true
-  error.value = ''
   try {
     await load()
-    notice.value = '表单数据已刷新'
+    push.success('表单数据已刷新')
   } finally {
     busy.value = false
   }
@@ -131,7 +129,6 @@ async function refreshForm() {
 
 async function saveTemplate(template: NotificationTemplateRecord) {
   busy.value = true
-  error.value = ''
   try {
     await api(`/api/admin/notification-templates/${template.event_type}`, {
       method: 'PUT',
@@ -140,10 +137,10 @@ async function saveTemplate(template: NotificationTemplateRecord) {
         html_template: template.html_template,
       }),
     })
-    notice.value = '模板已保存'
+    push.success('模板已保存')
     await load()
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : '保存失败'
+    push.error(caught instanceof Error ? caught.message : '保存失败')
   } finally {
     busy.value = false
   }
@@ -151,16 +148,15 @@ async function saveTemplate(template: NotificationTemplateRecord) {
 
 async function saveRouting() {
   busy.value = true
-  error.value = ''
   try {
     const response = await api<{ routing: NotificationRoutingRecord[] }>('/api/admin/notification-routing', {
       method: 'PUT',
       body: JSON.stringify({ routes: routing.value }),
     })
     routing.value = response.routing
-    notice.value = '通知路由已保存，仅影响之后创建的通知任务'
+    push.success('通知路由已保存，仅影响之后创建的通知任务')
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : '保存失败'
+    push.error(caught instanceof Error ? caught.message : '保存失败')
   } finally {
     busy.value = false
   }
@@ -168,16 +164,15 @@ async function saveRouting() {
 
 async function testEmail() {
   busy.value = true
-  error.value = ''
   try {
     await api('/api/admin/notifications/test-email', {
       method: 'POST',
       body: JSON.stringify({ email: email.value }),
     })
-    notice.value = 'Email 测试任务已创建'
+    push.success('Email 测试任务已创建')
     await load()
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : '创建失败'
+    push.error(caught instanceof Error ? caught.message : '创建失败')
   } finally {
     busy.value = false
   }
@@ -185,13 +180,12 @@ async function testEmail() {
 
 async function testWebhook() {
   busy.value = true
-  error.value = ''
   try {
     await api('/api/admin/notifications/test-webhook', { method: 'POST' })
-    notice.value = 'Webhook 测试任务已创建'
+    push.success('Webhook 测试任务已创建')
     await load()
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : '创建失败'
+    push.error(caught instanceof Error ? caught.message : '创建失败')
   } finally {
     busy.value = false
   }
@@ -199,16 +193,15 @@ async function testWebhook() {
 
 async function testEmailPoster() {
   busy.value = true
-  error.value = ''
   try {
     await api('/api/admin/notifications/test-email-poster', {
       method: 'POST',
       body: JSON.stringify({ email: email.value }),
     })
-    notice.value = 'email-poster 测试任务已创建'
+    push.success('email-poster 测试任务已创建')
     await load()
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : '创建失败'
+    push.error(caught instanceof Error ? caught.message : '创建失败')
   } finally {
     busy.value = false
   }
@@ -220,10 +213,10 @@ async function retry(job: NotificationJobRecord) {
     await api(`/api/admin/notification-jobs/${job.id}/retry`, {
       method: 'POST',
     })
-    notice.value = '失败任务已重新排队'
+    push.success('失败任务已重新排队')
     await load()
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : '重试失败'
+    push.error(caught instanceof Error ? caught.message : '重试失败')
   } finally {
     busy.value = false
   }
@@ -245,16 +238,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
     <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
       SMTP、email-poster 与 Webhook 共用任务状态和重试逻辑；邮件同时保留纯文本与 HTML 正文。
     </p>
-    <p v-if="error" class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
-      {{ error }}
-    </p>
-    <p
-      v-if="notice"
-      class="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-    >
-      {{ notice }}
-    </p>
-
     <section class="card mt-6">
       <h2 class="font-semibold">环境配置状态</h2>
       <div class="mt-4 flex flex-wrap gap-3">

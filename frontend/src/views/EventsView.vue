@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { push } from 'notivue'
 import { onMounted, reactive, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 
@@ -11,7 +12,6 @@ const router = useRouter()
 const events = ref<EventRecord[]>([])
 const loading = ref(true)
 const busy = ref(false)
-const error = ref('')
 const showCreate = ref(false)
 const form = reactive<EventWrite>({
   name: '',
@@ -42,25 +42,23 @@ async function load() {
     events.value = await api<EventRecord[]>('/api/admin/events')
   } catch (caught) {
     if (caught instanceof ApiError && caught.status === 401) await router.replace('/admin')
-    else error.value = caught instanceof Error ? caught.message : '加载失败'
+    else push.error(caught instanceof Error ? caught.message : '加载失败')
   } finally {
     loading.value = false
   }
 }
 
 async function refreshList() {
-  error.value = ''
   await load()
 }
 
 async function createEvent() {
   const budget = Math.round(Number(budgetYuan.value) * 100)
   if (!Number.isFinite(budget) || budget < 0 || !/^\d+(\.\d{1,2})?$/.test(budgetYuan.value)) {
-    error.value = '比赛总预算必须是最多两位小数的非负金额'
+    push.error('比赛总预算必须是最多两位小数的非负金额')
     return
   }
   busy.value = true
-  error.value = ''
   try {
     const payload = {
       ...form,
@@ -74,7 +72,7 @@ async function createEvent() {
     showCreate.value = false
     await router.push(`/admin/events/${created.id}`)
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : '创建失败'
+    push.error(caught instanceof Error ? caught.message : '创建失败')
   } finally {
     busy.value = false
   }
@@ -99,9 +97,6 @@ onMounted(load)
       </div>
     </header>
 
-    <p v-if="error" class="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
-      {{ error }}
-    </p>
     <section v-if="loading" class="card text-slate-500 dark:text-slate-400">正在加载比赛…</section>
     <section v-else-if="events.length === 0" class="card text-center">
       <h2 class="text-lg font-semibold">还没有比赛</h2>
