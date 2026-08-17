@@ -38,9 +38,14 @@ def upgrade() -> None:
         op.add_column("winners", sa.Column("award_name", sa.String(200), nullable=True))
 
     # 2. Create availability table for event-prize selection.
+    # The FK targets need stub tables in the same MetaData so SQLAlchemy can
+    # resolve them while compiling the CREATE TABLE DDL.
+    metadata = sa.MetaData()
+    sa.Table("events", metadata, sa.Column("id", sa.BigInteger(), primary_key=True))
+    sa.Table("prizes", metadata, sa.Column("id", sa.BigInteger(), primary_key=True))
     event_prize_availability = sa.Table(
         "event_prize_availability",
-        sa.MetaData(),
+        metadata,
         sa.Column("event_id", sa.BigInteger(), sa.ForeignKey("events.id"), primary_key=True),
         sa.Column("prize_id", sa.BigInteger(), sa.ForeignKey("prizes.id"), primary_key=True),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
