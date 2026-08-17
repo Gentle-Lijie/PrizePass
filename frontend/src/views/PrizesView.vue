@@ -14,6 +14,7 @@ import type {
   PrizeWrite,
 } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
+import { exportFilename } from '@/utils/filename'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -429,20 +430,30 @@ onMounted(load)
           <div class="flex flex-wrap gap-2">
             <button
               class="btn-secondary"
-              @click="downloadAdmin('/api/admin/prizes/import/template?format=csv', 'prizes-template.csv')"
+              @click="
+                downloadAdmin('/api/admin/prizes/import/template?format=csv', exportFilename('奖品导入模板', 'csv'))
+              "
             >
               CSV 模板
             </button>
             <button
               class="btn-secondary"
-              @click="downloadAdmin('/api/admin/prizes/import/template?format=xlsx', 'prizes-template.xlsx')"
+              @click="
+                downloadAdmin('/api/admin/prizes/import/template?format=xlsx', exportFilename('奖品导入模板', 'xlsx'))
+              "
             >
               XLSX 模板
             </button>
-            <button class="btn-secondary" @click="downloadAdmin('/api/admin/prizes/export?format=csv', 'prizes.csv')">
+            <button
+              class="btn-secondary"
+              @click="downloadAdmin('/api/admin/prizes/export?format=csv', exportFilename('奖品', 'csv'))"
+            >
               导出 CSV
             </button>
-            <button class="btn-secondary" @click="downloadAdmin('/api/admin/prizes/export?format=xlsx', 'prizes.xlsx')">
+            <button
+              class="btn-secondary"
+              @click="downloadAdmin('/api/admin/prizes/export?format=xlsx', exportFilename('奖品', 'xlsx'))"
+            >
               导出 XLSX
             </button>
             <label class="btn-secondary cursor-pointer">

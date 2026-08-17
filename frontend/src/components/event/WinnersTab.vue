@@ -5,9 +5,10 @@ import { inject, reactive, ref } from 'vue'
 import { api, downloadAdmin } from '@/api/client'
 import type { NotificationChannel, WinnerCreate, WinnerImportPreview, WinnerRecord } from '@/api/types'
 import { eventTabContextKey } from '@/components/event/eventContext'
+import { exportFilename } from '@/utils/filename'
 
 const context = inject(eventTabContextKey)!
-const { eventId, winners, busy, load } = context
+const { eventId, event, winners, busy, load } = context
 
 const winnerImportFile = ref<File | null>(null)
 const winnerImportPreview = ref<WinnerImportPreview | null>(null)
@@ -201,7 +202,10 @@ async function editAwardName(winner: WinnerRecord) {
       <button
         class="btn-secondary"
         @click="
-          downloadAdmin(`/api/admin/events/${eventId}/winners/import/template?format=csv`, 'winners-template.csv')
+          downloadAdmin(
+            `/api/admin/events/${eventId}/winners/import/template?format=csv`,
+            exportFilename('获奖人导入模板', 'csv'),
+          )
         "
       >
         CSV 模板
@@ -209,20 +213,33 @@ async function editAwardName(winner: WinnerRecord) {
       <button
         class="btn-secondary"
         @click="
-          downloadAdmin(`/api/admin/events/${eventId}/winners/import/template?format=xlsx`, 'winners-template.xlsx')
+          downloadAdmin(
+            `/api/admin/events/${eventId}/winners/import/template?format=xlsx`,
+            exportFilename('获奖人导入模板', 'xlsx'),
+          )
         "
       >
         XLSX 模板
       </button>
       <button
         class="btn-secondary"
-        @click="downloadAdmin(`/api/admin/events/${eventId}/winners/export?format=csv`, 'winners.csv')"
+        @click="
+          downloadAdmin(
+            `/api/admin/events/${eventId}/winners/export?format=csv`,
+            exportFilename('获奖人', 'csv', event?.name),
+          )
+        "
       >
         导出 CSV
       </button>
       <button
         class="btn-secondary"
-        @click="downloadAdmin(`/api/admin/events/${eventId}/winners/export?format=xlsx`, 'winners.xlsx')"
+        @click="
+          downloadAdmin(
+            `/api/admin/events/${eventId}/winners/export?format=xlsx`,
+            exportFilename('获奖人', 'xlsx', event?.name),
+          )
+        "
       >
         导出 XLSX
       </button>

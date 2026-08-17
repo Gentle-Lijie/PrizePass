@@ -5,9 +5,10 @@ import { inject, onMounted, onUnmounted, ref } from 'vue'
 import { api, downloadAdmin } from '@/api/client'
 import type { AdminRedemption, AdminRedemptionStatus } from '@/api/types'
 import { eventTabContextKey } from '@/components/event/eventContext'
+import { exportFilename } from '@/utils/filename'
 
 const context = inject(eventTabContextKey)!
-const { eventId, redemptions, busy, load, refresh, refreshHooks } = context
+const { eventId, event, redemptions, busy, load, refresh, refreshHooks } = context
 
 const selectedRedemption = ref<AdminRedemption | null>(null)
 const redemptionStatus = ref<AdminRedemptionStatus | ''>('')
@@ -119,12 +120,22 @@ async function redemptionAction(redemption: AdminRedemption, action: 'ready' | '
         <button class="btn-secondary" type="button" :disabled="busy" @click="refresh">刷新状态</button
         ><button
           class="btn-secondary"
-          @click="downloadAdmin(`/api/admin/events/${eventId}/redemptions/export?format=csv`, 'redemptions.csv')"
+          @click="
+            downloadAdmin(
+              `/api/admin/events/${eventId}/redemptions/export?format=csv`,
+              exportFilename('兑换记录', 'csv', event?.name),
+            )
+          "
         >
           导出 CSV</button
         ><button
           class="btn-secondary"
-          @click="downloadAdmin(`/api/admin/events/${eventId}/redemptions/export?format=xlsx`, 'redemptions.xlsx')"
+          @click="
+            downloadAdmin(
+              `/api/admin/events/${eventId}/redemptions/export?format=xlsx`,
+              exportFilename('兑换记录', 'xlsx', event?.name),
+            )
+          "
         >
           导出 XLSX
         </button>
@@ -134,7 +145,7 @@ async function redemptionAction(redemption: AdminRedemption, action: 'ready' | '
           @click="
             downloadAdmin(
               `/api/admin/events/${eventId}/redemptions/reimbursement-export?format=xlsx`,
-              'reimbursement.xlsx',
+              exportFilename('报销', 'xlsx', event?.name),
             )
           "
         >
@@ -146,7 +157,7 @@ async function redemptionAction(redemption: AdminRedemption, action: 'ready' | '
           @click="
             downloadAdmin(
               `/api/admin/events/${eventId}/redemptions/reimbursement-export?format=csv`,
-              'reimbursement.csv',
+              exportFilename('报销', 'csv', event?.name),
             )
           "
         >

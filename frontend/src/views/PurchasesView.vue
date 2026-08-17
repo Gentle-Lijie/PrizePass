@@ -12,6 +12,7 @@ import type {
   PurchaseOrderWrite,
 } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
+import { exportFilename } from '@/utils/filename'
 
 const auth = useAuthStore()
 const purchases = ref<PurchaseOrderRecord[]>([])
@@ -338,7 +339,7 @@ async function executeConfirm() {
 
 async function downloadPackage(orderId: number, orderNo: string) {
   try {
-    await downloadAdmin(`/api/admin/purchases/${orderId}/package`, `${orderNo}.zip`)
+    await downloadAdmin(`/api/admin/purchases/${orderId}/package`, exportFilename('采购附件', 'zip', orderNo))
     push.success('打包下载已开始')
   } catch (e) {
     push.error(e instanceof Error ? e.message : '下载失败')
@@ -347,7 +348,7 @@ async function downloadPackage(orderId: number, orderNo: string) {
 
 async function exportPurchases(format: 'csv' | 'xlsx') {
   try {
-    await downloadAdmin(`/api/admin/purchases/export?format=${format}`, `purchases.${format}`)
+    await downloadAdmin(`/api/admin/purchases/export?format=${format}`, exportFilename('采购单', format))
     push.success('导出成功')
   } catch (e) {
     push.error(e instanceof Error ? e.message : '导出失败')
