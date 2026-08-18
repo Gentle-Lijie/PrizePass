@@ -277,5 +277,7 @@ export interface PurchaseOrderItemWrite {
 export interface PurchaseOrderWrite {
   title: string
   note: string | null
+  /** 采购总金额（分），以管理员填写为准 */
+  total_value: number
   items: PurchaseOrderItemWrite[]
 }

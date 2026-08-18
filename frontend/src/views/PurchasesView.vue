@@ -39,8 +39,10 @@ const form = reactive<{ title: string; note: string }>({
   title: '',
   note: '',
 })
-const prizeSearch = ref('')
-const selectedPrizes = ref<Map<number, number>>(new Map()) // prize_id -> quantity
+// 一个采购单能且只能选择一个奖品，数量可以大于 1；总金额以填写为准，单价仅供参考
+const selectedPrizeId = ref<number | null>(null)
+const quantity = ref(1)
+const totalValueYuan = ref('')
 const allPrizes = ref<PrizeRecord[]>([])
 const prizesLoading = ref(false)
 
@@ -102,8 +104,9 @@ async function openCreateModal() {
   editingId.value = null
   form.title = ''
   form.note = ''
-  selectedPrizes.value = new Map()
-  prizeSearch.value = ''
+  selectedPrizeId.value = null
+  quantity.value = 1
+  totalValueYuan.value = ''
   showFormModal.value = true
   await loadPrizes()
 }
@@ -112,15 +115,16 @@ async function openEditModal(order: PurchaseOrderRecord) {
   editingId.value = order.id
   form.title = order.title
   form.note = order.note || ''
-  selectedPrizes.value = new Map()
-  prizeSearch.value = ''
+  selectedPrizeId.value = null
+  quantity.value = 1
+  totalValueYuan.value = (order.total_value / 100).toFixed(2)
   showFormModal.value = true
   try {
     const detail = await api<PurchaseOrderRecord>(`/api/admin/purchases/${order.id}`)
-    if (detail.items) {
-      for (const item of detail.items) {
-        selectedPrizes.value.set(item.prize_id, item.quantity)
-      }
+    const item = detail.items?.[0]
+    if (item) {
+      selectedPrizeId.value = item.prize_id
+      quantity.value = item.quantity
     }
   } catch (e) {
     push.error(e instanceof Error ? e.message : '加载详情失败')
@@ -140,44 +144,17 @@ async function loadPrizes() {
   }
 }
 
-const filteredPrizes = computed(() => {
-  const q = prizeSearch.value.trim().toLowerCase()
-  if (!q) return allPrizes.value
-  return allPrizes.value.filter((p) => p.name.toLowerCase().includes(q) || (p.tag && p.tag.toLowerCase().includes(q)))
-})
+const selectedPrize = computed(() => allPrizes.value.find((prize) => prize.id === selectedPrizeId.value) ?? null)
 
-const runningTotal = computed(() => {
-  let total = 0
-  for (const prize of allPrizes.value) {
-    const qty = selectedPrizes.value.get(prize.id)
-    if (qty && qty > 0) {
-      total += prize.real_value * qty
-    }
-  }
-  return total
-})
+// 参考合计：单价 × 数量，仅供填写总金额时对照
+const referenceTotal = computed(() =>
+  selectedPrize.value ? selectedPrize.value.real_value * Math.max(1, Math.floor(quantity.value) || 1) : 0,
+)
 
-const selectedItemCount = computed(() => {
-  let count = 0
-  for (const qty of selectedPrizes.value.values()) {
-    if (qty > 0) count++
-  }
-  return count
-})
-
-function setPrizeQuantity(prizeId: number, qty: number) {
-  const safeQty = Math.max(0, Math.floor(qty))
-  if (safeQty === 0) {
-    selectedPrizes.value.delete(prizeId)
-  } else {
-    selectedPrizes.value.set(prizeId, safeQty)
-  }
-  // trigger reactivity
-  selectedPrizes.value = new Map(selectedPrizes.value)
-}
-
-function getPrizeQuantity(prizeId: number): number {
-  return selectedPrizes.value.get(prizeId) || 0
+function yuanToCents(yuan: string): number | null {
+  if (!/^\d+(\.\d{1,2})?$/.test(yuan)) return null
+  const cents = Math.round(Number(yuan) * 100)
+  return Number.isFinite(cents) && cents > 0 ? cents : null
 }
 
 async function submitForm() {
@@ -185,12 +162,18 @@ async function submitForm() {
     push.error('标题不能为空')
     return
   }
-  const items: Array<{ prize_id: number; quantity: number }> = []
-  for (const [prize_id, quantity] of selectedPrizes.value.entries()) {
-    if (quantity > 0) items.push({ prize_id, quantity })
+  if (!selectedPrizeId.value) {
+    push.error('请选择一个奖品')
+    return
   }
-  if (items.length === 0) {
-    push.error('请至少选择一个奖品')
+  const qty = Math.floor(quantity.value)
+  if (!Number.isInteger(qty) || qty < 1 || qty > 9999) {
+    push.error('数量必须是 1-9999 之间的整数')
+    return
+  }
+  const totalCents = yuanToCents(totalValueYuan.value.trim())
+  if (totalCents === null) {
+    push.error('总金额必须是大于 0 的金额（最多两位小数）')
     return
   }
   busy.value = true
@@ -198,7 +181,8 @@ async function submitForm() {
     const payload: PurchaseOrderWrite = {
       title: form.title.trim(),
       note: form.note.trim() || null,
-      items,
+      total_value: totalCents,
+      items: [{ prize_id: selectedPrizeId.value, quantity: qty }],
     }
     if (editingId.value) {
       await api<PurchaseOrderRecord>(`/api/admin/purchases/${editingId.value}`, {
@@ -540,94 +524,42 @@ onMounted(load)
             <textarea v-model="form.note" class="field mt-1" rows="2" maxlength="2000" placeholder="可选备注信息" />
           </label>
 
-          <!-- Prize Selection -->
-          <div>
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium">选择奖品</p>
-              <p class="text-sm text-slate-500 dark:text-slate-400">
-                已选 {{ selectedItemCount }} 项，合计：
-                <span class="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                  {{ formatMoney(runningTotal) }}
-                </span>
-              </p>
-            </div>
-            <input v-model="prizeSearch" class="field mt-2" placeholder="搜索奖品名称或标签..." />
+          <!-- Prize Selection: 下拉单选 + 数量 + 总金额（以填写为准，单价仅供参考） -->
+          <label class="text-sm font-medium">
+            奖品
+            <select v-model.number="selectedPrizeId" class="field mt-1" :disabled="prizesLoading" required>
+              <option :value="null" disabled>
+                {{ prizesLoading ? '加载奖品列表...' : '请选择奖品' }}
+              </option>
+              <option v-for="prize in allPrizes" :key="prize.id" :value="prize.id">
+                {{ prize.name }}（参考单价 {{ formatMoney(prize.real_value) }}）
+              </option>
+            </select>
+          </label>
+          <p v-if="allPrizes.length === 0 && !prizesLoading" class="text-xs text-slate-500 dark:text-slate-400">
+            暂无可用奖品，请先在全局奖品池中添加
+          </p>
 
-            <div
-              v-if="prizesLoading"
-              class="mt-3 rounded-lg border border-slate-200 p-6 text-center text-sm text-slate-500 dark:border-slate-700"
-            >
-              加载奖品列表...
-            </div>
-
-            <div
-              v-else-if="filteredPrizes.length === 0"
-              class="mt-3 rounded-lg border border-slate-200 p-6 text-center text-sm text-slate-500 dark:border-slate-700"
-            >
-              {{ prizeSearch ? '没有匹配的奖品' : '暂无可用奖品，请先在全局奖品池中添加' }}
-            </div>
-
-            <div v-else class="mt-3 max-h-80 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700">
-              <table class="w-full text-sm">
-                <thead class="sticky top-0 bg-slate-50 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                  <tr>
-                    <th class="p-3 text-left">奖品</th>
-                    <th class="p-3 text-right">单价</th>
-                    <th class="p-3 text-center" style="width: 120px">数量</th>
-                    <th class="p-3 text-right">小计</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="prize in filteredPrizes"
-                    :key="prize.id"
-                    class="border-t border-slate-200 dark:border-slate-700"
-                    :class="{
-                      'bg-blue-50 dark:bg-blue-950/30': getPrizeQuantity(prize.id) > 0,
-                    }"
-                  >
-                    <td class="p-3">
-                      <div class="flex items-center gap-2">
-                        <img
-                          v-if="prize.image"
-                          :src="prize.image"
-                          :alt="prize.name"
-                          class="h-8 w-8 rounded object-cover"
-                        />
-                        <div>
-                          <p class="font-medium">{{ prize.name }}</p>
-                          <p v-if="prize.tag" class="text-xs text-slate-500 dark:text-slate-400">
-                            {{ prize.tag }}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td class="p-3 text-right font-mono">
-                      {{ formatMoney(prize.real_value) }}
-                    </td>
-                    <td class="p-3">
-                      <input
-                        type="number"
-                        min="0"
-                        max="9999"
-                        :value="getPrizeQuantity(prize.id)"
-                        @input="setPrizeQuantity(prize.id, Number(($event.target as HTMLInputElement).value))"
-                        class="field w-full px-2 py-1 text-center"
-                      />
-                    </td>
-                    <td class="p-3 text-right font-mono">
-                      {{ formatMoney(prize.real_value * getPrizeQuantity(prize.id)) }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+          <div class="grid grid-cols-2 gap-4">
+            <label class="text-sm font-medium">
+              数量
+              <input v-model.number="quantity" type="number" min="1" max="9999" class="field mt-1" required />
+            </label>
+            <label class="text-sm font-medium">
+              总金额（元）
+              <input v-model="totalValueYuan" class="field mt-1" inputmode="decimal" placeholder="0.00" required />
+            </label>
           </div>
+          <p v-if="selectedPrize" class="text-xs text-slate-500 dark:text-slate-400">
+            参考合计（单价 × 数量）：
+            <span class="font-mono">{{ formatMoney(referenceTotal) }}</span>
+            ，仅供参考，实际金额以上方填写的总金额为准
+          </p>
         </div>
 
         <div class="mt-6 flex justify-end gap-3">
           <button class="btn-secondary" type="button" @click="showFormModal = false">取消</button>
-          <button class="btn-primary" :disabled="busy || selectedItemCount === 0" @click="submitForm">
+          <button class="btn-primary" :disabled="busy || !selectedPrizeId" @click="submitForm">
             {{ busy ? '提交中...' : editingId ? '保存修改' : '创建采购单' }}
           </button>
         </div>
@@ -707,9 +639,8 @@ onMounted(load)
                 <thead class="bg-slate-50 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
                   <tr>
                     <th class="p-3 text-left">奖品</th>
-                    <th class="p-3 text-right">单价</th>
+                    <th class="p-3 text-right">参考单价</th>
                     <th class="p-3 text-center">数量</th>
-                    <th class="p-3 text-right">小计</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -723,9 +654,6 @@ onMounted(load)
                       {{ formatMoney(item.unit_value) }}
                     </td>
                     <td class="p-3 text-center">{{ item.quantity }}</td>
-                    <td class="p-3 text-right font-mono">
-                      {{ formatMoney(item.line_value) }}
-                    </td>
                   </tr>
                 </tbody>
               </table>

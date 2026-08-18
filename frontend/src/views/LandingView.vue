@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import {
   ArrowRight,
   Bell,
+  Boxes,
   CheckCircle2,
   FileSpreadsheet,
   Gift,
@@ -11,6 +12,7 @@ import {
   MapPin,
   Minus,
   Plus,
+  ReceiptText,
   ShieldCheck,
   Sparkles,
   Ticket,
@@ -471,6 +473,128 @@ function goAdmin() {
             </p>
           </li>
         </ol>
+      </div>
+    </section>
+
+    <!-- 奖品池与采购报销 -->
+    <section class="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+      <div v-reveal class="mx-auto max-w-2xl text-center">
+        <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">奖品池到报销单，一站式闭环</h2>
+        <p class="mt-3 text-slate-600 dark:text-slate-300">
+          奖品全局维护、按比赛复用；兑换与采购自动归档，报销一键导出。
+        </p>
+      </div>
+
+      <div class="mt-12 grid gap-6 lg:grid-cols-2">
+        <!-- 全局奖品池 -->
+        <div
+          v-reveal
+          class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+        >
+          <div class="flex items-center gap-3">
+            <span
+              class="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-accent dark:bg-blue-950/50 dark:text-blue-300"
+            >
+              <Boxes class="h-5 w-5" />
+            </span>
+            <h3 class="text-lg font-semibold">全局奖品池</h3>
+          </div>
+          <p class="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            奖品在全局池中集中维护，每个比赛从池中勾选可用奖品，跨比赛复用同一份奖品库。
+          </p>
+          <ul class="mt-4 space-y-2 text-sm text-slate-700 dark:text-slate-300">
+            <li class="flex items-center gap-2">
+              <span class="text-emerald-600">✓</span> 图片、价格、库存、标签一处更新
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-emerald-600">✓</span> CSV / XLSX 批量导入与批量操作
+            </li>
+            <li class="flex items-center gap-2"><span class="text-emerald-600">✓</span> 一键上下架、缺货自动提示</li>
+          </ul>
+          <div class="mt-5 space-y-2">
+            <div
+              v-for="row in [
+                { name: '京东 E 卡 100 元', tag: '数码', events: 3 },
+                { name: '定制帆布袋', tag: '周边', events: 2 },
+                { name: '机械键盘', tag: '数码', events: 1 },
+              ]"
+              :key="row.name"
+              class="flex items-center justify-between rounded-xl bg-canvas px-4 py-2.5"
+            >
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium">{{ row.name }}</span>
+                <span
+                  class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                  >{{ row.tag }}</span
+                >
+              </div>
+              <span class="text-xs text-slate-500 dark:text-slate-400">{{ row.events }} 个比赛在使用</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 采购与报销导出 -->
+        <div
+          v-reveal
+          class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+        >
+          <div class="flex items-center gap-3">
+            <span
+              class="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-accent dark:bg-blue-950/50 dark:text-blue-300"
+            >
+              <ReceiptText class="h-5 w-5" />
+            </span>
+            <h3 class="text-lg font-semibold">采购与报销导出</h3>
+          </div>
+          <p class="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            按比赛一键导出已领取记录的报销表；采购单金额以实际填写为准，单价仅供参考。
+          </p>
+          <ul class="mt-4 space-y-2 text-sm text-slate-700 dark:text-slate-300">
+            <li class="flex items-center gap-2">
+              <span class="text-emerald-600">✓</span> 报销表支持 CSV / XLSX，按比赛标识命名
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-emerald-600">✓</span> 采购单：单奖品 + 数量 + 实付总额
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-emerald-600">✓</span> 交易截图与发票附件一键打包下载
+            </li>
+          </ul>
+          <div class="mt-5 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+                <tr>
+                  <th class="px-4 py-2 text-left font-medium">奖品</th>
+                  <th class="px-4 py-2 text-center font-medium">数量</th>
+                  <th class="px-4 py-2 text-right font-medium">金额</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in [
+                    { name: '京东 E 卡 100 元', qty: 5, amount: '¥500.00' },
+                    { name: '定制马克杯', qty: 12, amount: '¥336.00' },
+                  ]"
+                  :key="row.name"
+                  class="border-t border-slate-100 dark:border-slate-800"
+                >
+                  <td class="px-4 py-2">{{ row.name }}</td>
+                  <td class="px-4 py-2 text-center font-mono">{{ row.qty }}</td>
+                  <td class="px-4 py-2 text-right font-mono">{{ row.amount }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="flex items-center justify-between bg-canvas px-4 py-2.5">
+              <span class="text-xs text-slate-500 dark:text-slate-400">已领取记录 · 汇总</span>
+              <span
+                class="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white"
+              >
+                <FileSpreadsheet class="h-3.5 w-3.5" />
+                导出报销 XLSX
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

@@ -62,7 +62,16 @@ class PurchaseItemWrite(StrictModel):
 class PurchaseOrderWrite(StrictModel):
     title: Annotated[str, Field(min_length=1, max_length=200)]
     note: Annotated[str | None, Field(max_length=2000)] = None
-    items: Annotated[list[PurchaseItemWrite], Field(min_length=1, max_length=200)]
+    # 采购总金额（分），以管理员填写为准；奖品单价仅作参考快照。
+    total_value: Annotated[int, Field(gt=0)]
+    items: list[PurchaseItemWrite]
+
+    @field_validator("items")
+    @classmethod
+    def exactly_one_item(cls, value: list[PurchaseItemWrite]) -> list[PurchaseItemWrite]:
+        if len(value) != 1:
+            raise ValueError("一个采购单只能包含一个奖品（数量可以大于 1）")
+        return value
 
     @field_validator("title")
     @classmethod
@@ -170,7 +179,7 @@ def serialize_purchase(
 
 
 def replace_items(db: Session, order: PurchaseOrder, payload: PurchaseOrderWrite) -> int:
-    """Snapshot matched prizes into order items; caller commits. Returns total cents."""
+    """Snapshot matched prizes into order items; caller commits. Returns the admin-entered total cents."""
     quantities = {item.prize_id: item.quantity for item in payload.items}
     if len(quantities) != len(payload.items):
         fail(422, "duplicate_prize", "采购单包含重复奖品")
@@ -184,10 +193,9 @@ def replace_items(db: Session, order: PurchaseOrder, payload: PurchaseOrderWrite
     for item in order_items(db, order.id):
         db.delete(item)
     db.flush()
-    total = 0
     for prize in prizes:
         quantity = quantities[prize.id]
-        line_value = prize.real_value * quantity
+        # 单价与行金额仅作为参考快照；采购单金额以管理员填写的 total_value 为准。
         db.add(
             PurchaseOrderItem(
                 purchase_order_id=order.id,
@@ -195,12 +203,11 @@ def replace_items(db: Session, order: PurchaseOrder, payload: PurchaseOrderWrite
                 prize_name_snapshot=prize.name,
                 unit_value_snapshot=prize.real_value,
                 quantity=quantity,
-                line_value=line_value,
+                line_value=prize.real_value * quantity,
             )
         )
-        total += line_value
-    order.total_value = total
-    return total
+    order.total_value = payload.total_value
+    return payload.total_value
 
 
 @router.get("/purchases")
@@ -420,9 +427,7 @@ MANIFEST_HEADERS = [
     "title",
     "status",
     "prize_name",
-    "unit_value",
     "quantity",
-    "line_value",
     "total_value",
     "note",
     "created_at",
@@ -441,9 +446,7 @@ def download_package(purchase_id: int, db: DbSession) -> Response:
             order.title,
             order.status.value,
             item.prize_name_snapshot,
-            f"{item.unit_value_snapshot / 100:.2f}",
             item.quantity,
-            f"{item.line_value / 100:.2f}",
             f"{order.total_value / 100:.2f}",
             order.note or "",
             utc_iso(order.created_at) or "",
@@ -455,8 +458,6 @@ def download_package(purchase_id: int, db: DbSession) -> Response:
             order.order_no,
             order.title,
             order.status.value,
-            "",
-            "",
             "",
             "",
             f"{order.total_value / 100:.2f}",

@@ -165,20 +165,22 @@ def test_purchase_order_lifecycle_with_attachments() -> None:
         },
     ).json()
 
-    # Create a draft purchase order matching the prize.
+    # Create a draft purchase order; total_value is admin-entered and may
+    # differ from the unit-price reference (200 × 2 = 400 yuan).
     created = client.post(
         "/api/admin/purchases",
         headers=ADMIN,
         json={
             "title": "8 月采购",
             "note": "第一批奖品",
+            "total_value": 35_500,
             "items": [{"prize_id": prize["id"], "quantity": 2}],
         },
     )
     assert created.status_code == 201, created.text
     order = created.json()
     assert order["status"] == "draft"
-    assert order["total_value"] == 40_000
+    assert order["total_value"] == 35_500
     assert order["items"][0]["prize_name"] == "采购奖品"
 
     # Uploading a transaction screenshot and an invoice PDF succeeds.
@@ -209,7 +211,7 @@ def test_purchase_order_lifecycle_with_attachments() -> None:
     assert client.put(
         f"/api/admin/purchases/{order['id']}",
         headers=ADMIN,
-        json={"title": "改标题", "items": [{"prize_id": prize["id"], "quantity": 1}]},
+        json={"title": "改标题", "total_value": 12_345, "items": [{"prize_id": prize["id"], "quantity": 1}]},
     ).status_code == 409
     assert client.delete(f"/api/admin/purchases/{order['id']}", headers=ADMIN).status_code == 409
 
@@ -250,6 +252,7 @@ def test_purchase_order_reimburse_requires_both_attachment_kinds() -> None:
         headers=ADMIN,
         json={
             "title": "缺发票",
+            "total_value": 500,
             "items": [{"prize_id": prize["id"], "quantity": 1}],
         },
     ).json()
@@ -282,7 +285,7 @@ def test_cancelled_purchase_order_can_be_deleted() -> None:
     order = client.post(
         "/api/admin/purchases",
         headers=ADMIN,
-        json={"title": "待取消", "items": [{"prize_id": prize["id"], "quantity": 1}]},
+        json={"title": "待取消", "total_value": 5_000, "items": [{"prize_id": prize["id"], "quantity": 1}]},
     ).json()
 
     cancel = client.post(f"/api/admin/purchases/{order['id']}/cancel", headers=ADMIN)
@@ -310,7 +313,7 @@ def test_purchase_order_attachment_rejects_bad_content() -> None:
     order = client.post(
         "/api/admin/purchases",
         headers=ADMIN,
-        json={"title": "验证", "items": [{"prize_id": prize["id"], "quantity": 1}]},
+        json={"title": "验证", "total_value": 5_000, "items": [{"prize_id": prize["id"], "quantity": 1}]},
     ).json()
 
     # A non-PDF labeled as invoice is rejected.
@@ -350,7 +353,7 @@ def test_purchase_order_data_model_persists() -> None:
     order = client.post(
         "/api/admin/purchases",
         headers=ADMIN,
-        json={"title": "ORM", "items": [{"prize_id": prize["id"], "quantity": 1}]},
+        json={"title": "ORM", "total_value": 30_000, "items": [{"prize_id": prize["id"], "quantity": 1}]},
     ).json()
 
     # Verify via API instead of direct ORM query
