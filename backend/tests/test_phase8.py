@@ -389,7 +389,7 @@ def test_reimbursement_export_only_picked_up_with_required_fields() -> None:
     assert exported.status_code == 200, exported.text
     text = exported.content.decode("utf-8-sig")
     lines = [line for line in text.splitlines() if line]
-    assert lines[0] == "序号,奖品名称,单价（元）,数量,总价（元）,对应奖项,领奖人,兑换单号,领取时间,导出时间"
+    assert lines[0] == "序号,奖品名称,单价（元）,数量,总价（元）,对应奖项,领奖人,兑换单号,领取时间,领奖签字,导出时间"
     assert len(lines) == 2  # header + the single picked-up item row
     row = lines[1]
     assert "报销奖品" in row

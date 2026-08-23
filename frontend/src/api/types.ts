@@ -190,6 +190,8 @@ export interface AdminRedemption {
   created_at: string
   picked_up_at: string | null
   cancelled_at: string | null
+  /** 领奖签名（裁剪后的 PNG data URL），仅已签字领奖的兑换单有值 */
+  signature?: string | null
   items?: Array<{
     id: number
     prize_id: number
@@ -201,6 +203,14 @@ export interface AdminRedemption {
     quantity: number
     line_redeem_value: number
   }>
+}
+
+export interface ClaimLookup {
+  code: string
+  winner: { name: string; email: string; award_name: string | null }
+  redemption: AdminRedemption | null
+  claimable: boolean
+  reason: string | null
 }
 
 export interface NotificationTemplateRecord {

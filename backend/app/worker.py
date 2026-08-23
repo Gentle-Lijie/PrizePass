@@ -1,3 +1,4 @@
+import base64
 import logging
 import smtplib
 import time
@@ -9,8 +10,8 @@ from sqlalchemy import or_, select, update
 
 from .config import get_settings
 from .database import SessionLocal
-from .models import NotificationChannel, NotificationJob, NotificationStatus
-from .notifications import utc_now
+from .models import NotificationChannel, NotificationJob, NotificationStatus, RedemptionCode
+from .notifications import CLAIM_QR_CID, claim_qr_html_block, claim_qr_png, utc_now
 from .timeutils import utc_iso
 
 
@@ -39,6 +40,38 @@ EMAIL_POSTER_PRESETS = {
 }
 
 
+def claim_qr_bytes_for_job(job: NotificationJob) -> bytes | None:
+    """QR pointing at the winner's redemption URL, for code_issued emails."""
+    if job.event_type != "code_issued" or job.winner_id is None:
+        return None
+    with SessionLocal() as db:
+        code = db.scalar(
+            select(RedemptionCode.code).where(RedemptionCode.winner_id == job.winner_id)
+        )
+    if not code:
+        return None
+    base = get_settings().public_base_url.rstrip("/")
+    return claim_qr_png(f"{base}/redeem?code={code}")
+
+
+def append_claim_qr(html: str, src: str) -> str:
+    """Put the QR at the bottom of the card's content cell (html_document).
+
+    The card is the second-to-last table; inserting right before its content
+    cell's </td> keeps the QR inside the centered white card. Custom templates
+    without that skeleton fall back to just before </body>.
+    """
+    block = claim_qr_html_block(src)
+    outer_close = html.rfind("</table>")
+    inner_close = html.rfind("</table>", 0, outer_close) if outer_close != -1 else -1
+    cell_close = html.rfind("</td>", 0, inner_close) if inner_close != -1 else -1
+    if cell_close != -1:
+        return html[:cell_close] + block + html[cell_close:]
+    if "</body>" in html:
+        return html.replace("</body>", f"{block}</body>", 1)
+    return html + block
+
+
 def send_email(job: NotificationJob) -> None:
     settings = get_settings()
     if not settings.smtp_host or not settings.smtp_from_email:
@@ -53,7 +86,13 @@ def send_email(job: NotificationJob) -> None:
     message["To"] = job.destination
     message.set_content(job.text_rendered)
     if job.html_rendered:
-        message.add_alternative(job.html_rendered, subtype="html")
+        html = job.html_rendered
+        qr_png = claim_qr_bytes_for_job(job)
+        if qr_png is not None and f"cid:{CLAIM_QR_CID}" not in html:
+            html = append_claim_qr(html, f"cid:{CLAIM_QR_CID}")
+        message.add_alternative(html, subtype="html")
+        if qr_png is not None:
+            message.get_payload()[1].add_related(qr_png, "image", "png", cid=CLAIM_QR_CID)
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
         if settings.smtp_use_tls:
             smtp.starttls()
@@ -97,6 +136,13 @@ def build_email_poster_payload(job: NotificationJob) -> dict[str, object]:
 
     body_type = "html" if job.html_rendered else "text"
     body = job.html_rendered or job.text_rendered
+    if body_type == "html":
+        # email-poster only carries an HTML string, so the claim QR must be
+        # inlined as a data URI (no related-attachment mechanism here).
+        qr_png = claim_qr_bytes_for_job(job)
+        if qr_png is not None and 'alt="领奖二维码"' not in body:
+            src = "data:image/png;base64," + base64.b64encode(qr_png).decode()
+            body = append_claim_qr(body, src)
     if fields.get("body"):
         payload[fields["body"]] = body
     else:

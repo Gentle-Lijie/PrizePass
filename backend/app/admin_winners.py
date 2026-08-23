@@ -18,6 +18,7 @@ from .models import (
     NotificationChannel,
     NotificationJob,
     NotificationStatus,
+    Redemption,
     RedemptionCode,
     Winner,
 )
@@ -32,9 +33,10 @@ from .schemas import StrictModel
 from .spreadsheets import (
     MAX_FILE_SIZE,
     export_csv,
-    export_xlsx,
+    export_xlsx_with_images,
     parse_positive_integer,
     read_table,
+    signature_png,
     template_bytes,
 )
 from .timeutils import utc_iso
@@ -67,6 +69,8 @@ WINNER_EXPORT_HEADERS = [
     "email_notification_status",
     "webhook_notification_status",
     "created_at",
+    "picked_up_at",
+    "signature",
 ]
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
@@ -313,14 +317,16 @@ def add_winner(event_id: int, payload: WinnerCreate, db: DbSession) -> dict:
     return {"imported": 1, "id": winner.id}
 
 
-def winner_rows(db: Session, event_id: int) -> list[dict]:
-    rows = db.execute(
-        select(Winner, RedemptionCode)
+def winner_rows(db: Session, event_id: int, *, include_claims: bool = False) -> list[dict]:
+    statement = (
+        select(Winner, RedemptionCode, Redemption)
         .join(RedemptionCode, RedemptionCode.winner_id == Winner.id)
+        .outerjoin(Redemption, Redemption.code_id == RedemptionCode.id)
         .where(Winner.event_id == event_id)
         .order_by(Winner.id)
-    ).all()
-    winner_ids = [winner.id for winner, _ in rows]
+    )
+    rows = db.execute(statement).all()
+    winner_ids = [winner.id for winner, _, _ in rows]
     jobs = db.scalars(
         select(NotificationJob)
         .where(NotificationJob.winner_id.in_(winner_ids), NotificationJob.event_type == "code_issued")
@@ -329,8 +335,9 @@ def winner_rows(db: Session, event_id: int) -> list[dict]:
     statuses: dict[tuple[int, str], NotificationStatus] = {}
     for job in jobs:
         statuses.setdefault((job.winner_id, job.channel.value), job.status)
-    return [
-        {
+    result = []
+    for winner, code, redemption in rows:
+        row = {
             "id": winner.id,
             "external_id": winner.external_id,
             "name": winner.name,
@@ -343,8 +350,11 @@ def winner_rows(db: Session, event_id: int) -> list[dict]:
             "webhook_notification_status": statuses.get((winner.id, NotificationChannel.WEBHOOK.value), NotificationStatus.PENDING).value,
             "created_at": utc_iso(winner.created_at),
         }
-        for winner, code in rows
-    ]
+        if include_claims:
+            row["picked_up_at"] = utc_iso(redemption.picked_up_at) if redemption else None
+            row["signature"] = redemption.signature if redemption else None
+        result.append(row)
+    return result
 
 
 def winner_and_code_or_404(
@@ -455,10 +465,20 @@ def list_winners(event_id: int, db: DbSession) -> list[dict]:
 @router.get("/events/{event_id}/winners/export")
 def export_winners(event_id: int, db: DbSession, format: str = Query(pattern="^(csv|xlsx)$")) -> Response:
     get_event_or_404(db, event_id)
-    rows = winner_rows(db, event_id)
-    matrix = [[row[header] if row[header] is not None else "" for header in WINNER_EXPORT_HEADERS] for row in rows]
+    rows = winner_rows(db, event_id, include_claims=True)
     if format == "csv":
+        matrix = []
+        for row in rows:
+            values = [row[header] if row[header] is not None else "" for header in WINNER_EXPORT_HEADERS]
+            values[WINNER_EXPORT_HEADERS.index("signature")] = "已签字" if row["signature"] else ""
+            matrix.append(values)
         content, media_type = export_csv(WINNER_EXPORT_HEADERS, matrix), "text/csv; charset=utf-8"
     else:
-        content, media_type = export_xlsx(WINNER_EXPORT_HEADERS, matrix), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        matrix = []
+        for row in rows:
+            values = [row[header] if row[header] is not None else "" for header in WINNER_EXPORT_HEADERS]
+            values[WINNER_EXPORT_HEADERS.index("signature")] = signature_png(row["signature"]) or ""
+            matrix.append(values)
+        content = export_xlsx_with_images(WINNER_EXPORT_HEADERS, matrix, "signature")
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     return Response(content, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="winners.{format}"'})

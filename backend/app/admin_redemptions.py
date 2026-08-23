@@ -27,7 +27,7 @@ from .notifications import (
     wish_rejected_context,
 )
 from .schemas import StrictModel
-from .spreadsheets import export_csv, export_xlsx
+from .spreadsheets import export_csv, export_xlsx, export_xlsx_with_images, signature_png
 from .timeutils import utc_iso
 
 
@@ -147,6 +147,7 @@ def serialize_redemption(
         "created_at": utc_iso(redemption.created_at),
         "picked_up_at": utc_iso(redemption.picked_up_at),
         "cancelled_at": utc_iso(redemption.cancelled_at),
+        "signature": redemption.signature,
     }
     if detail:
         result["items"] = [
@@ -382,6 +383,7 @@ REIMBURSEMENT_EXPORT_HEADERS = [
     "领奖人",
     "兑换单号",
     "领取时间",
+    "领奖签字",
     "导出时间",
 ]
 
@@ -402,6 +404,8 @@ def reimbursement_rows(db: Session, event_id: int) -> list[dict]:
     for redemption in redemptions:
         _, winner, _, items = related(db, redemption)
         picked_up_at = (utc_iso(redemption.picked_up_at) or "").replace("T", " ")
+        # 签名是兑换单级别的：只附在第一个奖品行，避免同一签名重复插图。
+        signature = redemption.signature
         for item in items:
             sequence += 1
             rows.append(
@@ -415,9 +419,11 @@ def reimbursement_rows(db: Session, event_id: int) -> list[dict]:
                     "领奖人": winner.name,
                     "兑换单号": redemption.order_no,
                     "领取时间": picked_up_at,
+                    "领奖签字": signature,
                     "导出时间": exported_at,
                 }
             )
+            signature = None
     return rows
 
 
@@ -426,11 +432,25 @@ def export_reimbursements(event_id: int, db: DbSession, format: str = Query(patt
     """报销专用导出：仅导出已领取（picked_up）的兑换，按奖品明细逐行展开。"""
     get_event_or_404(db, event_id)
     rows = reimbursement_rows(db, event_id)
-    matrix = [[row[header] for header in REIMBURSEMENT_EXPORT_HEADERS] for row in rows]
     if format == "csv":
+        matrix = [
+            [
+                "已签字" if header == "领奖签字" and row[header] else row[header]
+                for header in REIMBURSEMENT_EXPORT_HEADERS
+            ]
+            for row in rows
+        ]
         content, media_type = export_csv(REIMBURSEMENT_EXPORT_HEADERS, matrix), "text/csv; charset=utf-8"
     else:
-        content, media_type = export_xlsx(REIMBURSEMENT_EXPORT_HEADERS, matrix), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        matrix = [
+            [
+                signature_png(row[header]) or "" if header == "领奖签字" else row[header]
+                for header in REIMBURSEMENT_EXPORT_HEADERS
+            ]
+            for row in rows
+        ]
+        content = export_xlsx_with_images(REIMBURSEMENT_EXPORT_HEADERS, matrix, "领奖签字")
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     return Response(content, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="reimbursement.{format}"'})
 
 

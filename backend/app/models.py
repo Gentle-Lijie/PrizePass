@@ -181,6 +181,8 @@ class Redemption(Base):
     updated_at: Mapped[datetime] = updated_at()
     picked_up_at: Mapped[datetime | None] = mapped_column(DateTime)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Signature collected on the claim tablet (trimmed mono PNG data URL).
+    signature: Mapped[str | None] = mapped_column(Text)
 
 
 class RedemptionItem(Base):

@@ -1,3 +1,5 @@
+import base64
+import binascii
 import csv
 import io
 import re
@@ -6,6 +8,9 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.drawing.image import Image as XlsxImage
+from openpyxl.utils import get_column_letter
+from PIL import Image as PILImage
 
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
@@ -101,6 +106,55 @@ def export_xlsx(headers: list[str], rows: list[list[Any]]) -> bytes:
     sheet.append(headers)
     for row in rows:
         sheet.append([safe_cell(value) for value in row])
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+# Signature pictures render ~80px tall (~60pt) so rows stay readable in Excel.
+SIGNATURE_DISPLAY_HEIGHT = 80
+SIGNATURE_PREFIX = "data:image/png;base64,"
+
+
+def signature_png(signature: str | None) -> bytes | None:
+    """Decode a stored claim signature (PNG data URL) to raw PNG bytes."""
+    if not signature or not signature.startswith(SIGNATURE_PREFIX):
+        return None
+    try:
+        return base64.b64decode(signature[len(SIGNATURE_PREFIX):])
+    except (binascii.Error, ValueError):
+        return None
+
+
+def export_xlsx_with_images(
+    headers: list[str], rows: list[list[Any]], image_header: str
+) -> bytes:
+    """Like export_xlsx, but cells holding PNG bytes under image_header are
+    embedded as pictures (scaled to SIGNATURE_DISPLAY_HEIGHT) instead of text."""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "data"
+    sheet.append(headers)
+    image_column = headers.index(image_header)
+    letter = get_column_letter(image_column + 1)
+    sheet.column_dimensions[letter].width = 24
+    for row in rows:
+        sheet.append(
+            ["" if isinstance(value, bytes) else safe_cell(value) for value in row]
+        )
+    for row_number, row in enumerate(rows, start=2):
+        png = row[image_column]
+        if not isinstance(png, bytes) or not png:
+            continue
+        with PILImage.open(io.BytesIO(png)) as image:
+            width, height = image.size
+        # Each picture needs its own stream; openpyxl reads them at save time.
+        picture = XlsxImage(io.BytesIO(png))
+        picture.height = SIGNATURE_DISPLAY_HEIGHT
+        picture.width = max(1, round(width * SIGNATURE_DISPLAY_HEIGHT / height))
+        picture.anchor = f"{letter}{row_number}"
+        sheet.add_image(picture)
+        sheet.row_dimensions[row_number].height = SIGNATURE_DISPLAY_HEIGHT * 0.75 + 6
     output = io.BytesIO()
     workbook.save(output)
     return output.getvalue()

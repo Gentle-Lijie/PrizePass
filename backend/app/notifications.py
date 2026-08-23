@@ -1,8 +1,10 @@
+import io
 from datetime import datetime, timezone
 from html import escape
 import re
 from urllib.parse import urlencode
 
+import qrcode
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -235,6 +237,30 @@ def render_notification(
 ) -> tuple[str, str | None]:
     text_template, html_template = template_content(db, event_type)
     return render_template(text_template, context), render_html_template(html_template, context)
+
+
+def claim_qr_png(url: str) -> bytes:
+    """Render a claim QR code (PNG bytes) that the tablet camera can scan."""
+    image = qrcode.make(url, box_size=8, border=2)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+CLAIM_QR_CID = "claim-qr"
+
+
+def claim_qr_html_block(src: str) -> str:
+    """QR block placed at the bottom of the card content cell.
+
+    src is a cid: reference for SMTP (related attachment) or a data: URI for
+    channels that can only carry an HTML string (email-poster).
+    """
+    return (
+        '<p style="margin:28px 0 8px">领奖时请向工作人员出示下方二维码：</p>'
+        f'<p style="margin:0;text-align:center"><img src="{src}" width="180" height="180" alt="领奖二维码" '
+        'style="display:inline-block;border:1px solid #e2e8f0;border-radius:8px"></p>'
+    )
 
 
 def code_issued_context(winner: Winner, code: str, event) -> dict[str, str | int]:

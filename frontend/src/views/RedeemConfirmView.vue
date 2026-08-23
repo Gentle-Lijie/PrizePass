@@ -161,8 +161,8 @@ onMounted(async () => {
         ></div>
         <button
           class="btn-primary relative w-full py-3 shadow-lg sm:static sm:shadow-none"
+          type="submit"
           :disabled="busy || (!isCustom && remaining < 0)"
-          @click="requestSubmit"
         >
           {{ busy ? '提交中…' : '确认并提交兑换' }}
         </button>

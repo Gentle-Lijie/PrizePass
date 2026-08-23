@@ -5,6 +5,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 
 import { api, ApiError } from '@/api/client'
 import type { AdminRedemption, EventPrizeSummary, EventRecord, PrizeRecord, WinnerRecord } from '@/api/types'
+import ClaimTab from '@/components/event/ClaimTab.vue'
 import PrizesTab from '@/components/event/PrizesTab.vue'
 import RedemptionsTab from '@/components/event/RedemptionsTab.vue'
 import SettingsTab from '@/components/event/SettingsTab.vue'
@@ -26,7 +27,7 @@ const prizeSummary = ref<EventPrizeSummary>({
   claimed_purchase_value: 0,
   budget: 0,
 })
-const tab = ref<'prizes' | 'winners' | 'redemptions' | 'settings'>('prizes')
+const tab = ref<'prizes' | 'winners' | 'redemptions' | 'claim' | 'settings'>('prizes')
 const busy = ref(false)
 const refreshHooks = new Set<() => void>()
 
@@ -121,6 +122,7 @@ onMounted(load)
           { key: 'prizes', label: '奖品' },
           { key: 'winners', label: '获奖人' },
           { key: 'redemptions', label: '兑换记录' },
+          { key: 'claim', label: '领奖' },
           { key: 'settings', label: '比赛设置' },
         ]"
         :key="item.key"
@@ -139,6 +141,7 @@ onMounted(load)
     <PrizesTab v-if="tab === 'prizes'" />
     <WinnersTab v-else-if="tab === 'winners'" />
     <RedemptionsTab v-else-if="tab === 'redemptions'" />
+    <ClaimTab v-else-if="tab === 'claim'" />
     <SettingsTab v-else />
   </main>
 </template>
