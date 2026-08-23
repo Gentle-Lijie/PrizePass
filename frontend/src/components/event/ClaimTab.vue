@@ -23,6 +23,9 @@ const lookupCode = ref('')
 const submitting = ref(false)
 const cameraStarting = ref(false)
 const cameraError = ref('')
+// Enumerated cameras (label + deviceId); -1 means "not picked yet".
+const cameras = ref<Array<{ id: string; label: string }>>([])
+const cameraIndex = ref(-1)
 
 let scanner: Html5Qrcode | null = null
 let pad: SignaturePad | null = null
@@ -51,12 +54,31 @@ async function startCamera() {
   try {
     // zxing inside html5-qrcode is heavy; load it only when scanning starts.
     const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode')
+    if (cameras.value.length === 0) {
+      // getCameras() prompts for permission on some browsers; the scan start
+      // below would prompt anyway, so failing here is not an error.
+      try {
+        cameras.value = (await Html5Qrcode.getCameras()) ?? []
+      } catch {
+        cameras.value = []
+      }
+    }
+    // Prefer a rear camera by label; fall back to the first device, and to
+    // facingMode when enumeration is unavailable (e.g. strict privacy modes).
+    let camera: string | { facingMode: string } = { facingMode: 'environment' }
+    if (cameras.value.length > 0) {
+      if (cameraIndex.value < 0) {
+        const rear = cameras.value.findIndex((item) => /back|rear|environment|后置|后摄/i.test(item.label))
+        cameraIndex.value = rear >= 0 ? rear : 0
+      }
+      camera = cameras.value[cameraIndex.value]?.id ?? { facingMode: 'environment' }
+    }
     const instance = new Html5Qrcode(READER_ID, {
       formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
       verbose: false,
     })
     await instance.start(
-      { facingMode: 'environment' },
+      camera,
       { fps: 10, qrbox: { width: 240, height: 240 } },
       async (decoded) => {
         const code = extractCode(decoded)
@@ -90,6 +112,18 @@ async function stopCamera() {
   } catch {
     // Camera already gone (tab switched / browser teardown).
   }
+}
+
+async function switchCamera() {
+  if (cameras.value.length < 2 || cameraStarting.value) return
+  await stopCamera()
+  cameraIndex.value = (cameraIndex.value + 1) % cameras.value.length
+  await startCamera()
+}
+
+function cameraLabel(index: number) {
+  const label = cameras.value[index]?.label ?? ''
+  return label ? `（${label.slice(0, 12)}）` : ''
 }
 
 async function runLookup(code: string) {
@@ -282,6 +316,15 @@ function redemptionStatusLabel(status: AdminRedemption['status']) {
       </p>
       <button v-if="cameraError" class="btn-secondary mx-auto block" type="button" @click="startCamera">
         重试摄像头
+      </button>
+      <button
+        v-if="cameras.length > 1"
+        class="btn-secondary mx-auto block"
+        type="button"
+        :disabled="cameraStarting"
+        @click="switchCamera"
+      >
+        切换摄像头{{ cameraLabel(cameraIndex) }}
       </button>
       <form class="flex max-w-md gap-2 mx-auto" @submit.prevent="submitManualCode">
         <input
