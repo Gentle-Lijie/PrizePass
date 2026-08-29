@@ -562,7 +562,16 @@ onMounted(load)
                 <div class="flex items-center gap-3">
                   <img :src="prize.image" :alt="prize.name" class="h-12 w-12 rounded-lg object-cover" />
                   <div>
-                    <p class="font-medium">{{ prize.name }}</p>
+                    <p class="font-medium">
+                      {{ prize.name }}
+                      <span
+                        v-if="prize.origin_redemption_id"
+                        class="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 align-middle text-xs text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
+                        title="由自定义心愿生成，来源兑换单 {{ prize.origin_redemption_id }}；图片为占位图，可点击编辑补传"
+                      >
+                        心愿奖品
+                      </span>
+                    </p>
                     <p class="max-w-xs truncate text-sm text-slate-500 dark:text-slate-400">
                       {{ prize.description || '无描述' }}
                     </p>

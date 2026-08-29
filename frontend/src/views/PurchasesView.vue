@@ -49,6 +49,67 @@ const prizesLoading = ref(false)
 // Attachment upload state
 const uploadingKind = ref<PurchaseAttachmentKind | null>(null)
 
+// Wish backfill picker: generate a prize from an unmatched custom wish
+interface UnmatchedWish {
+  redemption_id: number
+  order_no: string
+  status: string
+  winner_name: string
+  event_name: string
+  custom_name: string
+  custom_url: string | null
+  custom_note: string | null
+  custom_price: number | null
+  created_at: string
+}
+const showWishModal = ref(false)
+const wishes = ref<UnmatchedWish[]>([])
+const wishesLoading = ref(false)
+const creatingWishId = ref<number | null>(null)
+
+const wishStatusLabels: Record<string, string> = {
+  submitted: '已提交',
+  procuring: '待备货',
+  ready: '待领取',
+  picked_up: '已领取',
+}
+
+async function openWishPicker() {
+  showWishModal.value = true
+  wishesLoading.value = true
+  try {
+    wishes.value = await api<UnmatchedWish[]>('/api/admin/wishes/unmatched')
+  } catch (e) {
+    push.error(e instanceof Error ? e.message : '加载心愿列表失败')
+  } finally {
+    wishesLoading.value = false
+  }
+}
+
+async function useWish(wish: UnmatchedWish) {
+  creatingWishId.value = wish.redemption_id
+  try {
+    const prize = await api<PrizeRecord>(`/api/admin/wishes/${wish.redemption_id}/create-prize`, {
+      method: 'POST',
+    })
+    showWishModal.value = false
+    await loadPrizes()
+    selectedPrizeId.value = prize.id
+    quantity.value = 1
+    if (!totalValueYuan.value && wish.custom_price !== null) {
+      totalValueYuan.value = (wish.custom_price / 100).toFixed(2)
+    }
+    if (!form.title.trim()) {
+      form.title = `心愿采购：${wish.custom_name}`.slice(0, 200)
+    }
+    push.success(`已从心愿生成奖品「${prize.name}」`)
+  } catch (e) {
+    push.error(e instanceof Error ? e.message : '生成奖品失败')
+  } finally {
+    creatingWishId.value = null
+  }
+}
+
 async function load() {
   loading.value = true
   try {
@@ -525,17 +586,28 @@ onMounted(load)
           </label>
 
           <!-- Prize Selection: 下拉单选 + 数量 + 总金额（以填写为准，单价仅供参考） -->
-          <label class="text-sm font-medium">
-            奖品
-            <select v-model.number="selectedPrizeId" class="field mt-1" :disabled="prizesLoading" required>
-              <option :value="null" disabled>
-                {{ prizesLoading ? '加载奖品列表...' : '请选择奖品' }}
-              </option>
-              <option v-for="prize in allPrizes" :key="prize.id" :value="prize.id">
-                {{ prize.name }}（参考单价 {{ formatMoney(prize.real_value) }}）
-              </option>
-            </select>
-          </label>
+          <div>
+            <div class="flex items-center justify-between">
+              <label class="text-sm font-medium">
+                奖品
+                <select v-model.number="selectedPrizeId" class="field mt-1" :disabled="prizesLoading" required>
+                  <option :value="null" disabled>
+                    {{ prizesLoading ? '加载奖品列表...' : '请选择奖品' }}
+                  </option>
+                  <option v-for="prize in allPrizes" :key="prize.id" :value="prize.id">
+                    {{ prize.name }}（参考单价 {{ formatMoney(prize.real_value) }}）
+                  </option>
+                </select>
+              </label>
+              <button
+                type="button"
+                class="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                @click="openWishPicker"
+              >
+                从心愿创建奖品
+              </button>
+            </div>
+          </div>
           <p v-if="allPrizes.length === 0 && !prizesLoading" class="text-xs text-slate-500 dark:text-slate-400">
             暂无可用奖品，请先在全局奖品池中添加
           </p>
@@ -562,6 +634,71 @@ onMounted(load)
           <button class="btn-primary" :disabled="busy || !selectedPrizeId" @click="submitForm">
             {{ busy ? '提交中...' : editingId ? '保存修改' : '创建采购单' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wish Picker Modal（叠加在创建/编辑采购单之上） -->
+    <div
+      v-if="showWishModal"
+      class="fixed inset-0 z-30 grid place-items-center bg-slate-950/40 p-4"
+      @click.self="showWishModal = false"
+    >
+      <div class="card max-h-[85vh] w-full max-w-2xl overflow-auto">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xl font-bold">从心愿创建奖品</h2>
+          <button type="button" class="text-slate-500 dark:text-slate-400" @click="showWishModal = false">
+            关闭
+          </button>
+        </div>
+        <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+          以下自定义心愿尚未生成奖品 entry，生成后即可选入采购报销单。
+        </p>
+
+        <div v-if="wishesLoading" class="p-10 text-center text-slate-500">加载中...</div>
+        <p v-else-if="wishes.length === 0" class="p-10 text-center text-slate-500">暂无待补建的心愿</p>
+        <div v-else class="mt-4 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700">
+          <table class="w-full min-w-[560px] text-sm">
+            <thead class="bg-slate-50 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+              <tr>
+                <th class="p-3 text-left">心愿</th>
+                <th class="p-3 text-left">获奖人 / 单号</th>
+                <th class="p-3 text-left">状态</th>
+                <th class="p-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="wish in wishes"
+                :key="wish.redemption_id"
+                class="border-t border-slate-200 dark:border-slate-700"
+              >
+                <td class="p-3">
+                  <p class="font-medium">{{ wish.custom_name }}</p>
+                  <p v-if="wish.custom_price !== null" class="text-xs text-slate-500 dark:text-slate-400">
+                    期望价格 {{ formatMoney(wish.custom_price) }}
+                  </p>
+                  <p v-if="wish.custom_note" class="mt-1 max-w-[220px] truncate text-xs text-slate-500 dark:text-slate-400">
+                    备注：{{ wish.custom_note }}
+                  </p>
+                </td>
+                <td class="p-3">
+                  <p>{{ wish.winner_name }}</p>
+                  <p class="font-mono text-xs text-slate-500 dark:text-slate-400">{{ wish.order_no }}</p>
+                </td>
+                <td class="whitespace-nowrap p-3">{{ wishStatusLabels[wish.status] ?? wish.status }}</td>
+                <td class="whitespace-nowrap p-3 text-right">
+                  <button
+                    class="text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                    :disabled="creatingWishId !== null"
+                    @click="useWish(wish)"
+                  >
+                    {{ creatingWishId === wish.redemption_id ? '生成中...' : '生成并选用' }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

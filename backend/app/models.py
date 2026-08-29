@@ -35,6 +35,8 @@ class CodeStatus(StrEnum):
 
 class RedemptionStatus(StrEnum):
     SUBMITTED = "submitted"
+    # Accepted custom wishes wait here while the prize is being procured.
+    PROCURING = "procuring"
     READY = "ready"
     PICKED_UP = "picked_up"
     CANCELLED = "cancelled"
@@ -120,6 +122,10 @@ class Prize(Base):
     tag: Mapped[str | None] = mapped_column(String(100))
     # Off-shelf prizes stay visible to admins but are hidden from the redemption page.
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"))
+    # Non-null only for prizes auto-generated from an accepted custom wish.
+    origin_redemption_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("redemptions.id"), unique=True
+    )
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 

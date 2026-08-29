@@ -216,8 +216,32 @@ def test_custom_prize_redemption_flow() -> None:
         assert len(wish_jobs) == 2  # smtp (operations) + webhook; email_poster disabled in tests
         assert all(job.redemption_id == redemption_id for job in wish_jobs)
 
-    # Accept: the ready transition notifies the winner.
-    assert client.post(f"/api/admin/redemptions/{redemption_id}/ready", headers=ADMIN).status_code == 200
+    # Accept: the wish first enters procuring (待备货) and a prize entry is generated.
+    accepted = client.post(f"/api/admin/redemptions/{redemption_id}/ready", headers=ADMIN)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["status"] == "procuring"
+    generated_prize_id = accepted.json()["generated_prize_id"]
+    assert generated_prize_id is not None
+    with Session(test_engine) as session:
+        prize = session.get(Prize, generated_prize_id)
+        assert prize is not None
+        assert prize.origin_redemption_id == redemption_id
+        assert prize.name == "无线键盘（测试获奖人）"
+        assert prize.image == "/uploads/prizes/placeholder.png"
+        assert prize.jd_url == "https://item.jd.com/100000000001.html"
+        assert prize.real_value == 19900
+        assert prize.tag == "心愿奖品"
+        assert prize.is_active is False
+        accepted_jobs = session.scalars(
+            select(NotificationJob).where(NotificationJob.event_type == "wish_accepted")
+        ).all()
+        assert accepted_jobs and all(job.winner_id is not None for job in accepted_jobs)
+
+    # Stocking finishes: the wish becomes ready and the winner is notified.
+    stocked = client.post(f"/api/admin/redemptions/{redemption_id}/stock", headers=ADMIN)
+    assert stocked.status_code == 200, stocked.text
+    assert stocked.json()["status"] == "ready"
+    assert stocked.json()["generated_prize_id"] == generated_prize_id
     with Session(test_engine) as session:
         ready_jobs = session.scalars(
             select(NotificationJob).where(NotificationJob.event_type == "redemption_ready")
@@ -245,6 +269,8 @@ def test_custom_prize_redemption_flow() -> None:
             select(NotificationJob).where(NotificationJob.event_type == "redemption_cancelled")
         ).all()
         assert not cancelled_jobs
+        # The generated prize entry survives wish rejection (it may already be on a purchase order).
+        assert session.get(Prize, generated_prize_id) is not None
 
 
 def test_multi_prize_redemption_is_atomic_and_snapshotted() -> None:

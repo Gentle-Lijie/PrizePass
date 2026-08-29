@@ -142,6 +142,8 @@ class PrizeRead(BaseModel):
     description: str | None
     tag: str | None
     is_active: bool
+    # Non-null only for prizes auto-generated from an accepted custom wish.
+    origin_redemption_id: int | None
     created_at: datetime
     updated_at: datetime
 

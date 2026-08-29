@@ -24,9 +24,11 @@ from .notifications import (
     create_notification_jobs,
     render_notification,
     utc_now,
+    wish_accepted_context,
     wish_rejected_context,
 )
-from .schemas import StrictModel
+from .schemas import PrizeRead, StrictModel
+from .wishes import create_prize_from_wish
 from .spreadsheets import export_csv, export_xlsx, export_xlsx_with_images, signature_png
 from .timeutils import utc_iso
 
@@ -124,6 +126,7 @@ def serialize_redemption(
     items: list[RedemptionItem],
     *,
     detail: bool = False,
+    generated_prize: Prize | None = None,
 ) -> dict:
     result = {
         "id": redemption.id,
@@ -148,6 +151,8 @@ def serialize_redemption(
         "picked_up_at": utc_iso(redemption.picked_up_at),
         "cancelled_at": utc_iso(redemption.cancelled_at),
         "signature": redemption.signature,
+        "generated_prize_id": generated_prize.id if generated_prize is not None else None,
+        "generated_prize_name": generated_prize.name if generated_prize is not None else None,
     }
     if detail:
         result["items"] = [
@@ -167,6 +172,16 @@ def serialize_redemption(
     return result
 
 
+def generated_prize_map(db: Session, redemption_ids: list[int]) -> dict[int, Prize]:
+    """One query for the wish-generated prizes of many redemptions (avoids N+1)."""
+    if not redemption_ids:
+        return {}
+    prizes = db.scalars(
+        select(Prize).where(Prize.origin_redemption_id.in_(redemption_ids))
+    ).all()
+    return {prize.origin_redemption_id: prize for prize in prizes}
+
+
 @router.get("/events/{event_id}/redemptions")
 def list_redemptions(
     event_id: int,
@@ -181,10 +196,15 @@ def list_redemptions(
     if search and search.strip():
         statement = statement.where(Redemption.order_no.like(f"%{search.strip()}%"))
     redemptions = db.scalars(statement.order_by(Redemption.created_at.desc(), Redemption.id.desc())).all()
+    prize_map = generated_prize_map(db, [redemption.id for redemption in redemptions])
     output = []
     for redemption in redemptions:
         _, winner, _, items = related(db, redemption)
-        output.append(serialize_redemption(redemption, winner, items))
+        output.append(
+            serialize_redemption(
+                redemption, winner, items, generated_prize=prize_map.get(redemption.id)
+            )
+        )
     return output
 
 
@@ -192,7 +212,8 @@ def list_redemptions(
 def get_redemption(redemption_id: int, db: DbSession) -> dict:
     redemption = redemption_or_404(db, redemption_id)
     _, winner, _, items = related(db, redemption)
-    return serialize_redemption(redemption, winner, items, detail=True)
+    prize = generated_prize_map(db, [redemption.id]).get(redemption.id)
+    return serialize_redemption(redemption, winner, items, detail=True, generated_prize=prize)
 
 
 def transition(
@@ -202,6 +223,7 @@ def transition(
     expected: RedemptionStatus,
     target: RedemptionStatus,
     event_type: str,
+    generate_prize: bool = False,
 ) -> dict:
     try:
         redemption = redemption_or_404(db, redemption_id, lock=True)
@@ -211,9 +233,14 @@ def transition(
         redemption.status = target
         if target is RedemptionStatus.PICKED_UP:
             redemption.picked_up_at = utc_now()
-        rendered, html_rendered = render_notification(
-            db, event_type, status_context(redemption, code, winner, event, items)
-        )
+        if generate_prize and redemption.custom_name:
+            # Materialize the wish as a catalog prize for purchase orders.
+            create_prize_from_wish(db, redemption, winner)
+        if event_type == "wish_accepted":
+            context = wish_accepted_context(winner, event, code.code, redemption)
+        else:
+            context = status_context(redemption, code, winner, event, items)
+        rendered, html_rendered = render_notification(db, event_type, context)
         create_notification_jobs(
             db,
             event_type=event_type,
@@ -227,15 +254,40 @@ def transition(
     except Exception:
         db.rollback()
         raise
-    return serialize_redemption(redemption, winner, items, detail=True)
+    prize = generated_prize_map(db, [redemption.id]).get(redemption.id)
+    return serialize_redemption(redemption, winner, items, detail=True, generated_prize=prize)
 
 
 @router.post("/redemptions/{redemption_id}/ready")
 def mark_ready(redemption_id: int, db: DbSession) -> dict:
+    redemption = redemption_or_404(db, redemption_id)
+    if redemption.custom_name:
+        # Accepted wishes first wait in procuring while the prize is purchased
+        # and stocked; the admin then calls /stock to make them ready.
+        return transition(
+            db,
+            redemption_id,
+            expected=RedemptionStatus.SUBMITTED,
+            target=RedemptionStatus.PROCURING,
+            event_type="wish_accepted",
+            generate_prize=True,
+        )
     return transition(
         db,
         redemption_id,
         expected=RedemptionStatus.SUBMITTED,
+        target=RedemptionStatus.READY,
+        event_type="redemption_ready",
+    )
+
+
+@router.post("/redemptions/{redemption_id}/stock")
+def mark_stocked(redemption_id: int, db: DbSession) -> dict:
+    """Procurement finished: a procuring wish becomes ready for pickup."""
+    return transition(
+        db,
+        redemption_id,
+        expected=RedemptionStatus.PROCURING,
         target=RedemptionStatus.READY,
         event_type="redemption_ready",
     )
@@ -267,7 +319,11 @@ def cancel_redemption(
 ) -> dict:
     try:
         redemption = redemption_or_404(db, redemption_id, lock=True)
-        if redemption.status not in (RedemptionStatus.SUBMITTED, RedemptionStatus.READY):
+        if redemption.status not in (
+            RedemptionStatus.SUBMITTED,
+            RedemptionStatus.PROCURING,
+            RedemptionStatus.READY,
+        ):
             fail(409, "invalid_redemption_transition", "当前兑换状态不能取消")
         # Rejecting a custom prize requires an admin-written reason for the winner email.
         if redemption.custom_name and not (payload and payload.reason):
@@ -331,6 +387,58 @@ def cancel_redemption(
         db.rollback()
         raise
     return serialize_redemption(redemption, winner, items, detail=True)
+
+
+@router.get("/wishes/unmatched")
+def list_unmatched_wishes(db: DbSession) -> list[dict]:
+    """Wishes without a generated prize yet, for the purchase page backfill picker."""
+    rows = db.execute(
+        select(Redemption, Winner, Event)
+        .join(RedemptionCode, RedemptionCode.id == Redemption.code_id)
+        .join(Winner, Winner.id == RedemptionCode.winner_id)
+        .join(Event, Event.id == Redemption.event_id)
+        .outerjoin(Prize, Prize.origin_redemption_id == Redemption.id)
+        .where(
+            Redemption.custom_name.is_not(None),
+            Redemption.status != RedemptionStatus.CANCELLED,
+            Prize.id.is_(None),
+        )
+        .order_by(Redemption.created_at.desc(), Redemption.id.desc())
+    ).all()
+    return [
+        {
+            "redemption_id": redemption.id,
+            "order_no": redemption.order_no,
+            "status": redemption.status.value,
+            "winner_name": winner.name,
+            "event_name": event.name,
+            "custom_name": redemption.custom_name,
+            "custom_url": redemption.custom_url,
+            "custom_note": redemption.custom_note,
+            "custom_price": redemption.custom_price,
+            "created_at": utc_iso(redemption.created_at),
+        }
+        for redemption, winner, event in rows
+    ]
+
+
+@router.post("/wishes/{redemption_id}/create-prize", response_model=PrizeRead)
+def create_wish_prize(redemption_id: int, db: DbSession, response: Response) -> Prize:
+    """Backfill entry: materialize a wish as a catalog prize idempotently."""
+    redemption = redemption_or_404(db, redemption_id)
+    if not redemption.custom_name:
+        fail(422, "not_a_wish", "该兑换不是自定义心愿")
+    code = db.get(RedemptionCode, redemption.code_id)
+    winner = db.get(Winner, code.winner_id) if code else None
+    try:
+        prize, created = create_prize_from_wish(db, redemption, winner)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    response.status_code = 201 if created else 200
+    db.refresh(prize)
+    return prize
 
 
 @router.get("/events/{event_id}/redemptions/export")
@@ -424,12 +532,31 @@ def reimbursement_rows(db: Session, event_id: int) -> list[dict]:
                 }
             )
             signature = None
+        if not items and redemption.custom_name:
+            # 心愿兑换没有奖品明细快照，用心愿字段补一行，保证能进报销导出。
+            sequence += 1
+            unit_cents = redemption.custom_price
+            rows.append(
+                {
+                    "序号": sequence,
+                    "奖品名称": f"自定义：{redemption.custom_name}",
+                    "单价（元）": f"{unit_cents / 100:.2f}" if unit_cents is not None else "",
+                    "数量": 1,
+                    "总价（元）": f"{unit_cents / 100:.2f}" if unit_cents is not None else "",
+                    "对应奖项": winner.award_name or "",
+                    "领奖人": winner.name,
+                    "兑换单号": redemption.order_no,
+                    "领取时间": picked_up_at,
+                    "领奖签字": signature,
+                    "导出时间": exported_at,
+                }
+            )
     return rows
 
 
 @router.get("/events/{event_id}/redemptions/reimbursement-export")
 def export_reimbursements(event_id: int, db: DbSession, format: str = Query(pattern="^(csv|xlsx)$")) -> Response:
-    """报销专用导出：仅导出已领取（picked_up）的兑换，按奖品明细逐行展开。"""
+    """报销专用导出：仅导出已领取（picked_up）的兑换，按奖品明细逐行展开；心愿兑换无明细，用心愿字段补一行。"""
     get_event_or_404(db, event_id)
     rows = reimbursement_rows(db, event_id)
     if format == "csv":

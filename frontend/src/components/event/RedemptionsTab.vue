@@ -21,6 +21,7 @@ function showError(caught: unknown, fallback: string) {
 function redemptionStatusLabel(status: AdminRedemptionStatus) {
   return {
     submitted: '已提交',
+    procuring: '待备货',
     ready: '待领取',
     picked_up: '已领取',
     cancelled: '已取消',
@@ -53,15 +54,17 @@ function reopenAfterRefresh() {
 onMounted(() => refreshHooks.add(reopenAfterRefresh))
 onUnmounted(() => refreshHooks.delete(reopenAfterRefresh))
 
-async function redemptionAction(redemption: AdminRedemption, action: 'ready' | 'pickup' | 'cancel') {
+async function redemptionAction(redemption: AdminRedemption, action: 'ready' | 'stock' | 'pickup' | 'cancel') {
   const labels = redemption.custom_name
     ? {
         ready: '采纳该自定义奖品',
+        stock: '标记该心愿备货完成',
         pickup: '标记为已领取',
         cancel: '拒绝该自定义奖品并恢复兑换码',
       }
     : {
         ready: '标记为待领取',
+        stock: '标记备货完成',
         pickup: '标记为已领取',
         cancel: '取消兑换并恢复库存',
       }
@@ -81,7 +84,11 @@ async function redemptionAction(redemption: AdminRedemption, action: 'ready' | '
       method: 'POST',
       ...(reason !== null ? { body: JSON.stringify({ reason }) } : {}),
     })
-    push.success('兑换状态已更新')
+    if (action === 'ready' && redemption.custom_name) {
+      push.success('心愿已采纳，进入待备货并已生成奖品，可在采购报销中使用')
+    } else {
+      push.success('兑换状态已更新')
+    }
     await load()
     await filterRedemptions()
     if (selectedRedemption.value) {
@@ -106,6 +113,7 @@ async function redemptionAction(redemption: AdminRedemption, action: 'ready' | '
           >状态<select v-model="redemptionStatus" class="field mt-1">
             <option value="">全部</option>
             <option value="submitted">已提交</option>
+            <option value="procuring">待备货</option>
             <option value="ready">待领取</option>
             <option value="picked_up">已领取</option>
             <option value="cancelled">已取消</option>
@@ -204,6 +212,13 @@ async function redemptionAction(redemption: AdminRedemption, action: 'ready' | '
               >
                 {{ record.custom_name ? '采纳' : '已备货' }}</button
               ><button
+                v-if="record.status === 'procuring'"
+                class="rounded-lg bg-blue-600 px-3 py-2 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="busy"
+                @click="redemptionAction(record, 'stock')"
+              >
+                备货完成</button
+              ><button
                 v-if="record.status === 'ready'"
                 class="rounded-lg bg-emerald-600 px-3 py-2 font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                 :disabled="busy"
@@ -211,7 +226,11 @@ async function redemptionAction(redemption: AdminRedemption, action: 'ready' | '
               >
                 已领取</button
               ><button
-                v-if="record.status === 'submitted' || record.status === 'ready'"
+                v-if="
+                  record.status === 'submitted' ||
+                  record.status === 'procuring' ||
+                  record.status === 'ready'
+                "
                 class="ml-3 text-red-600 dark:text-red-400"
                 @click="redemptionAction(record, 'cancel')"
               >
@@ -291,6 +310,22 @@ async function redemptionAction(redemption: AdminRedemption, action: 'ready' | '
             <p v-if="selectedRedemption.custom_note" class="mt-2 text-slate-500 dark:text-slate-400">
               备注：{{ selectedRedemption.custom_note }}
             </p>
+            <p class="mt-3">
+              <span
+                v-if="selectedRedemption.generated_prize_id"
+                class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+              >
+                已生成奖品「{{ selectedRedemption.generated_prize_name }}」#{{
+                  selectedRedemption.generated_prize_id
+                }}，可在采购报销中使用
+              </span>
+              <span
+                v-else
+                class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              >
+                未生成奖品（可在采购页补建）
+              </span>
+            </p>
           </div>
         </div>
         <div v-if="selectedRedemption.items?.length" class="mt-5">
@@ -327,13 +362,23 @@ async function redemptionAction(redemption: AdminRedemption, action: 'ready' | '
           >
             {{ selectedRedemption.custom_name ? '采纳' : '标记待领取' }}</button
           ><button
+            v-if="selectedRedemption.status === 'procuring'"
+            class="btn-primary"
+            @click="redemptionAction(selectedRedemption, 'stock')"
+          >
+            备货完成</button
+          ><button
             v-if="selectedRedemption.status === 'ready'"
             class="btn-primary"
             @click="redemptionAction(selectedRedemption, 'pickup')"
           >
             标记已领取</button
           ><button
-            v-if="selectedRedemption.status === 'submitted' || selectedRedemption.status === 'ready'"
+            v-if="
+              selectedRedemption.status === 'submitted' ||
+              selectedRedemption.status === 'procuring' ||
+              selectedRedemption.status === 'ready'
+            "
             class="btn-secondary text-red-600 dark:text-red-400"
             @click="redemptionAction(selectedRedemption, 'cancel')"
           >

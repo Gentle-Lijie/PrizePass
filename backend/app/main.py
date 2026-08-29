@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from .api import router
 from .config import get_settings
 from .errors import install_error_handlers
+from .wishes import ensure_placeholder_image
 
 
 settings = get_settings()
@@ -16,6 +17,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["Content-Type", "X-Admin-Password", "X-Redemption-Code"],
 )
+ensure_placeholder_image()
 app.include_router(router)
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir, check_dir=False), name="uploads")
 install_error_handlers(app)

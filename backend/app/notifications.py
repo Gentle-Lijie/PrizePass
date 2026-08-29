@@ -28,6 +28,7 @@ EVENT_TYPES = (
     "redemption_picked_up",
     "redemption_cancelled",
     "wish_submitted",
+    "wish_accepted",
     "wish_rejected",
 )
 
@@ -38,6 +39,7 @@ DEFAULT_RECIPIENTS = {
     "redemption_picked_up": NotificationRecipient.OPERATIONS,
     "redemption_cancelled": NotificationRecipient.WINNER,
     "wish_submitted": NotificationRecipient.OPERATIONS,
+    "wish_accepted": NotificationRecipient.WINNER,
     "wish_rejected": NotificationRecipient.WINNER,
 }
 
@@ -61,6 +63,7 @@ DEFAULT_TEMPLATES = {
     "redemption_picked_up": "兑换单 {{order_no}} 已领取。获奖人：{{winner_name}}；奖品：{{items_summary}}；状态：{{status}}。",
     "redemption_cancelled": "{{winner_name}}，兑换单 {{order_no}} 已取消，兑换码 {{code}} 已恢复使用。状态：{{status}}。",
     "wish_submitted": "{{winner_name}} 在 {{event_name}} 提交了自定义奖品申请 {{order_no}}：{{wish_name}}，期望价格 {{wish_price}}。链接：{{wish_url}}；备注：{{wish_note}}。请联系人 {{contact_name}} {{contact_phone}}。请在后台确认采纳或拒绝。",
+    "wish_accepted": "{{winner_name}}，你在 {{event_name}} 提交的自定义奖品申请 {{wish_name}} 已被采纳，我们正在采购备货中，备货完成后会再通知你前往 {{pickup_location}} 领取。",
     "wish_rejected": "{{winner_name}}，你提交的自定义奖品申请 {{wish_name}} 因为 {{reason}} 原因被驳回。兑换码 {{code}} 已恢复使用，可重新选择奖品。",
 }
 
@@ -121,6 +124,11 @@ DEFAULT_HTML_TEMPLATES = {
         "<p>{{winner_name}}，你提交的自定义奖品申请 <strong>{{wish_name}}</strong> 因为 <strong>{{reason}}</strong> 原因被驳回。</p>"
         "<p>兑换码 <strong>{{code}}</strong> 已恢复使用，可重新选择奖品。</p>",
     ),
+    "wish_accepted": html_document(
+        "自定义奖品申请已采纳",
+        "<p>{{winner_name}}，你在 <strong>{{event_name}}</strong> 提交的自定义奖品申请 <strong>{{wish_name}}</strong> 已被采纳。</p>"
+        "<p>我们正在采购备货中，备货完成后会再通知你前往 {{pickup_location}} 领取。</p>",
+    ),
 }
 
 ALL_TEMPLATE_VARIABLES = {
@@ -174,6 +182,18 @@ EVENT_VARIABLES = {
         "wish_price",
         "contact_name",
         "contact_phone",
+    },
+    "wish_accepted": {
+        "winner_name",
+        "event_name",
+        "order_no",
+        "wish_name",
+        "wish_url",
+        "wish_note",
+        "wish_price",
+        "status",
+        "pickup_location",
+        "pickup_instructions",
     },
     "wish_rejected": {
         "winner_name",
@@ -295,6 +315,23 @@ def wish_submitted_context(
         "wish_price": f"{redemption.custom_price / 100:.2f} 元" if redemption.custom_price is not None else "未填写",
         "contact_name": redemption.contact_name,
         "contact_phone": redemption.contact_phone,
+    }
+
+
+def wish_accepted_context(
+    winner: Winner, event, code: str, redemption
+) -> dict[str, str | int]:
+    return {
+        "winner_name": winner.name,
+        "event_name": event.name,
+        "order_no": redemption.order_no,
+        "wish_name": redemption.custom_name or "",
+        "wish_url": redemption.custom_url or "无",
+        "wish_note": redemption.custom_note or "无",
+        "wish_price": f"{redemption.custom_price / 100:.2f} 元" if redemption.custom_price is not None else "未填写",
+        "status": redemption.status.value,
+        "pickup_location": redemption.pickup_location_snapshot,
+        "pickup_instructions": redemption.pickup_instructions_snapshot,
     }
 
 

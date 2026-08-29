@@ -37,6 +37,8 @@ export interface PrizeRecord {
   description: string | null
   tag: string | null
   is_active: boolean
+  /** 仅由心愿自动生成的奖品有值，指向来源兑换单 */
+  origin_redemption_id: number | null
   created_at: string
   updated_at: string
 }
@@ -166,7 +168,7 @@ export interface RedemptionSuccess {
   pickup_instructions: string
 }
 
-export type AdminRedemptionStatus = 'submitted' | 'ready' | 'picked_up' | 'cancelled'
+export type AdminRedemptionStatus = 'submitted' | 'procuring' | 'ready' | 'picked_up' | 'cancelled'
 
 export interface AdminRedemption {
   id: number
@@ -192,6 +194,9 @@ export interface AdminRedemption {
   cancelled_at: string | null
   /** 领奖签名（裁剪后的 PNG data URL），仅已签字领奖的兑换单有值 */
   signature?: string | null
+  /** 心愿已生成的奖品（无值表示尚未生成，可在采购页补建） */
+  generated_prize_id?: number | null
+  generated_prize_name?: string | null
   items?: Array<{
     id: number
     prize_id: number

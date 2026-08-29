@@ -52,11 +52,11 @@ def clean_database():
             PurchaseOrderItem,
             PurchaseOrder,
             RedemptionItem,
+            EventPrizeAvailability,  # Must be before Prize (FK constraint)
+            Prize,  # Must be before Redemption (origin_redemption_id FK)
             Redemption,
             RedemptionCode,
             Winner,
-            EventPrizeAvailability,  # Must be before Prize (FK constraint)
-            Prize,
             Event,
         ):
             session.execute(delete(model))

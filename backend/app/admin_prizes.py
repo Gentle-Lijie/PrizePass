@@ -38,6 +38,7 @@ from .spreadsheets import (
     read_table,
     template_bytes,
 )
+from .wishes import PLACEHOLDER_IMAGE
 
 
 router = APIRouter(
@@ -59,6 +60,9 @@ def get_prize_or_404(db: Session, prize_id: int) -> Prize:
 
 def maybe_remove_unreferenced_local_image(db: Session, image: str, excluded_prize_id: int) -> None:
     if not image.startswith("/uploads/prizes/"):
+        return
+    if image == PLACEHOLDER_IMAGE:
+        # The seeded wish placeholder is shared; never delete it.
         return
     used_by_prize = db.scalar(
         select(func.count(Prize.id)).where(Prize.image == image, Prize.id != excluded_prize_id)

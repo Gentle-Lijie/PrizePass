@@ -39,6 +39,7 @@ const eventLabels: Record<string, string> = {
   redemption_picked_up: '兑换已领取',
   redemption_cancelled: '兑换已取消',
   wish_submitted: '自定义奖品申请',
+  wish_accepted: '自定义奖品已采纳',
   wish_rejected: '自定义奖品被驳回',
 }
 

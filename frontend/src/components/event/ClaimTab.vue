@@ -290,7 +290,7 @@ onBeforeUnmount(() => {
 })
 
 function redemptionStatusLabel(status: AdminRedemption['status']) {
-  return { submitted: '待备货', ready: '待领取', picked_up: '已领取', cancelled: '已取消' }[status]
+  return { submitted: '待备货', procuring: '待备货', ready: '待领取', picked_up: '已领取', cancelled: '已取消' }[status]
 }
 </script>
 
