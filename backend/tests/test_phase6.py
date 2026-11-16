@@ -243,7 +243,7 @@ def test_smtp_message_contains_text_and_html_alternatives(monkeypatch) -> None:
     settings = get_settings()
     monkeypatch.setattr(settings, "smtp_host", "smtp.example.com")
     monkeypatch.setattr(settings, "smtp_from_email", "sender@example.com")
-    monkeypatch.setattr(settings, "smtp_use_tls", False)
+    monkeypatch.setattr(settings, "smtp_security", "none")
     monkeypatch.setattr(settings, "smtp_username", "")
     sent = []
 
@@ -273,6 +273,93 @@ def test_smtp_message_contains_text_and_html_alternatives(monkeypatch) -> None:
     assert len(sent) == 1
     assert sent[0].get_body(preferencelist=("plain",)).get_content().strip() == "纯文本"
     assert sent[0].get_body(preferencelist=("html",)).get_content().strip() == "<p>HTML</p>"
+
+
+def _email_job() -> NotificationJob:
+    return NotificationJob(
+        event_type="code_issued",
+        channel=NotificationChannel.EMAIL,
+        destination="recipient@example.com",
+        text_rendered="纯文本",
+        html_rendered="<p>HTML</p>",
+        status=NotificationStatus.PENDING,
+    )
+
+
+def test_smtp_security_ssl_uses_smtp_ssl_without_starttls(monkeypatch) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "smtp_host", "smtp.example.com")
+    monkeypatch.setattr(settings, "smtp_from_email", "sender@example.com")
+    monkeypatch.setattr(settings, "smtp_security", "ssl")
+    monkeypatch.setattr(settings, "smtp_username", "")
+    seen = {}
+
+    class FakeSmtpSsl:
+        def __init__(self, host, port, timeout=None):
+            seen["ctor"] = (host, port, timeout)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def starttls(self):
+            seen["starttls"] = True
+
+        def send_message(self, message):
+            seen["sent"] = True
+
+    def _fail_plain(*_args, **_kwargs):
+        raise AssertionError("ssl 模式不应使用明文 SMTP 类")
+
+    monkeypatch.setattr(worker.smtplib, "SMTP_SSL", FakeSmtpSsl)
+    monkeypatch.setattr(worker.smtplib, "SMTP", _fail_plain)
+    worker.send_email(_email_job())
+    assert seen["ctor"] == ("smtp.example.com", settings.smtp_port, 20)
+    assert seen.get("sent") is True
+    assert "starttls" not in seen
+
+
+def test_smtp_security_starttls_calls_starttls(monkeypatch) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "smtp_host", "smtp.example.com")
+    monkeypatch.setattr(settings, "smtp_from_email", "sender@example.com")
+    monkeypatch.setattr(settings, "smtp_security", "starttls")
+    monkeypatch.setattr(settings, "smtp_username", "")
+    seen = {}
+
+    class FakeSmtp:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def starttls(self):
+            seen["starttls"] = True
+
+        def send_message(self, message):
+            seen["sent"] = True
+
+    monkeypatch.setattr(worker.smtplib, "SMTP", FakeSmtp)
+    worker.send_email(_email_job())
+    assert seen == {"starttls": True, "sent": True}
+
+
+def test_settings_migrates_legacy_smtp_use_tls(monkeypatch) -> None:
+    from app.config import Settings
+
+    monkeypatch.delenv("SMTP_SECURITY", raising=False)
+    monkeypatch.setenv("SMTP_USE_TLS", "false")
+    assert Settings(_env_file=None).smtp_security == "none"
+    monkeypatch.setenv("SMTP_USE_TLS", "true")
+    assert Settings(_env_file=None).smtp_security == "starttls"
+    monkeypatch.setenv("SMTP_SECURITY", "ssl")
+    assert Settings(_env_file=None).smtp_security == "ssl"
 
 
 def test_worker_retries_at_one_and_five_minutes_then_fails(monkeypatch) -> None:

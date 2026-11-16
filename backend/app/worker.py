@@ -93,8 +93,11 @@ def send_email(job: NotificationJob) -> None:
         message.add_alternative(html, subtype="html")
         if qr_png is not None:
             message.get_payload()[1].add_related(qr_png, "image", "png", cid=CLAIM_QR_CID)
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
-        if settings.smtp_use_tls:
+    # 465 端口是隐式 TLS（SMTPS），必须用 SMTP_SSL 直连建隧道；
+    # 明文 SMTP 连 465 会与服务器互相等待，最终超时断开。
+    smtp_cls = smtplib.SMTP_SSL if settings.smtp_security == "ssl" else smtplib.SMTP
+    with smtp_cls(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
+        if settings.smtp_security == "starttls":
             smtp.starttls()
         if settings.smtp_username:
             smtp.login(settings.smtp_username, settings.smtp_password)

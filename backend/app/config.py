@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,7 +21,10 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from_email: str = ""
     smtp_from_name: str = "PrizePass"
-    smtp_use_tls: bool = True
+    # SMTP_SECURITY: none=明文, starttls=显式 TLS(587 常用), ssl=隐式 TLS/SMTPS(465 常用)
+    smtp_security: Literal["none", "starttls", "ssl"] = "starttls"
+    # 废弃：布尔旧开关，仅为迁移保留，等价于 SMTP_SECURITY=none/starttls
+    smtp_use_tls: bool | None = None
     notification_email: str = ""
     webhook_url: str = ""
 
@@ -33,6 +37,18 @@ class Settings(BaseSettings):
     email_poster_extra: dict[str, object] = Field(default_factory=dict)
 
     worker_poll_seconds: float = Field(default=2.0, gt=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_smtp_use_tls(cls, values: Any) -> Any:
+        """兼容旧开关 SMTP_USE_TLS：false → none，其余 → starttls；SMTP_SECURITY 优先。"""
+        if isinstance(values, dict) and not values.get("smtp_security"):
+            legacy = values.get("smtp_use_tls")
+            if isinstance(legacy, str):
+                legacy = legacy.strip().lower() in {"1", "true", "yes", "on"}
+            if legacy is not None:
+                values["smtp_security"] = "starttls" if legacy else "none"
+        return values
 
 
 @lru_cache
